@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\Instrumentation;
 
 use Kinetis\Instrumentation\TelemetryInterface;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\Context\Context;
+use OpenTelemetry\Context\ContextInterface;
 use OpenTelemetry\Context\ScopeInterface;
 use Throwable;
 
@@ -232,15 +235,45 @@ final readonly class OtelTelemetry implements TelemetryInterface
         );
     }
 
+    /**
+     * The propagation channel: a traceparent carrier for the backend to
+     * store with the job, so the consumer span joins this trace from
+     * another process.
+     *
+     * @return array<string, string>
+     */
+    #[\Override]
+    public function jobPushMetadata(mixed $token): array
+    {
+        $span = $this->spanOf($token);
+
+        if ($span === null) {
+            return [];
+        }
+
+        $carrier = [];
+        TraceContextPropagator::getInstance()->inject($carrier, context: $span->storeInContext(Context::getCurrent()));
+
+        return $carrier;
+    }
+
     #[\Override]
     public function jobPushEnded(mixed $token, ?Throwable $failure): void
     {
         $this->end($token, $failure);
     }
 
+    /**
+     * @param array<string, string> $metadata
+     */
     #[\Override]
-    public function jobStarted(string $jobClass, string $queue, int $attempt): mixed
+    public function jobStarted(string $jobClass, string $queue, int $attempt, array $metadata = []): mixed
     {
+        // Metadata carried from push() parents this consumer span into
+        // the producer's own trace — one trace across processes. Without
+        // it, the span roots a fresh trace exactly as before.
+        $parent = $metadata === [] ? null : TraceContextPropagator::getInstance()->extract($metadata);
+
         return $this->start(
             "{$queue} process",
             [
@@ -250,6 +283,7 @@ final readonly class OtelTelemetry implements TelemetryInterface
             ],
             kind: SpanKind::KIND_CONSUMER,
             activate: true,
+            parent: $parent,
         );
     }
 
@@ -270,8 +304,10 @@ final readonly class OtelTelemetry implements TelemetryInterface
         array $attributes = [],
         int $kind = SpanKind::KIND_INTERNAL,
         bool $activate = false,
+        ?ContextInterface $parent = null,
     ): array {
         $span = $this->tracer->spanBuilder($name === '' ? 'kinetis' : $name)
+            ->setParent($parent)
             ->setSpanKind($kind)
             ->setAttributes($attributes)
             ->startSpan();

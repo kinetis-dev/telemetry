@@ -121,6 +121,47 @@ final class OtelTelemetryTest extends TracingTestCase
         self::assertSame([], $this->spans());
     }
 
+    public function test_push_metadata_carries_a_traceparent_for_the_producer_span(): void
+    {
+        $token = $this->telemetry->jobPushStarted('App\\SendEmail', 'emails');
+        $metadata = $this->telemetry->jobPushMetadata($token);
+        $this->telemetry->jobPushEnded($token, null);
+
+        self::assertArrayHasKey('traceparent', $metadata);
+        $producer = $this->span();
+        self::assertStringContainsString($producer->getTraceId(), $metadata['traceparent']);
+        self::assertStringContainsString($producer->getSpanId(), $metadata['traceparent']);
+    }
+
+    public function test_push_metadata_for_a_foreign_token_is_empty(): void
+    {
+        self::assertSame([], $this->telemetry->jobPushMetadata(null));
+    }
+
+    public function test_a_consumer_span_with_metadata_joins_the_producers_trace(): void
+    {
+        $pushToken = $this->telemetry->jobPushStarted('App\\SendEmail', 'emails');
+        $metadata = $this->telemetry->jobPushMetadata($pushToken);
+        $this->telemetry->jobPushEnded($pushToken, null);
+
+        // The worker side, normally another process entirely: only the
+        // string metadata crosses the boundary.
+        $jobToken = $this->telemetry->jobStarted('App\\SendEmail', 'emails', 1, $metadata);
+        $this->telemetry->jobFinished($jobToken, 'ack', null);
+
+        [$producer, $consumer] = $this->spans();
+        self::assertSame($producer->getTraceId(), $consumer->getTraceId());
+        self::assertSame($producer->getSpanId(), $consumer->getParentSpanId());
+    }
+
+    public function test_a_consumer_span_without_metadata_roots_its_own_trace(): void
+    {
+        $jobToken = $this->telemetry->jobStarted('App\\SendEmail', 'emails', 1);
+        $this->telemetry->jobFinished($jobToken, 'ack', null);
+
+        self::assertSame('0000000000000000', $this->span()->getParentSpanId());
+    }
+
     public function test_task_hooks_nest_under_the_batch(): void
     {
         $batch = $this->telemetry->taskBatchStarted(2);

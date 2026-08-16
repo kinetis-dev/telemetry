@@ -108,6 +108,23 @@ final class TracingQueueTest extends TracingTestCase
         self::assertSame([], $this->spans());
     }
 
+    public function test_a_popped_job_with_metadata_joins_the_producers_trace(): void
+    {
+        $producerTelemetry = new \Kinetis\Telemetry\Instrumentation\OtelTelemetry($this->tracerProvider);
+        $pushToken = $producerTelemetry->jobPushStarted('App\\SendEmail', 'default');
+        $metadata = $producerTelemetry->jobPushMetadata($pushToken);
+        $producerTelemetry->jobPushEnded($pushToken, null);
+
+        $queuedJob = new QueuedJob('App\\SendEmail', [], null, 'default', metadata: $metadata);
+        $queue = new TracingQueue(new FakeQueue($queuedJob), $this->tracerProvider);
+
+        $queue->pop();
+        $queue->ack($queuedJob);
+
+        [$producer, $consumer] = $this->spans();
+        self::assertSame($producer->getTraceId(), $consumer->getTraceId());
+    }
+
     public function test_size_and_clear_delegate_without_spans(): void
     {
         $queue = new TracingQueue(new FakeQueue(), $this->tracerProvider);

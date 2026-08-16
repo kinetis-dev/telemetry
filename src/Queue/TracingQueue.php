@@ -7,6 +7,7 @@ namespace Kinetis\Telemetry\Queue;
 use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
 use Kinetis\Queue\QueueInterface;
+use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
@@ -33,9 +34,11 @@ use WeakMap;
  * The worker loop runs pop → handle → ack strictly nested in one
  * fiber, which is what makes holding the scope across calls safe.
  *
- * Producer and consumer spans are separate traces: linking them needs
- * trace context inside the job payload, which a decorator has no way
- * to reach.
+ * The consumer span joins the producer's trace whenever the job carries
+ * propagation metadata — stored at push() time by the framework's
+ * instrumentation hooks. The decorator's own push() cannot inject that
+ * metadata (it has no way to reach the payload), so producer-side
+ * propagation is hook-only; this decorator honors what it finds.
  */
 final class TracingQueue implements QueueInterface
 {
@@ -80,7 +83,16 @@ final class TracingQueue implements QueueInterface
             return null;
         }
 
-        $span = $this->tracer->spanBuilder("{$job->queue} process")
+        $builder = $this->tracer->spanBuilder("{$job->queue} process");
+
+        // Metadata the hooks stored at push() time parents this span into
+        // the producer's trace; the decorator itself still cannot inject
+        // on its own push() — that path stays hook-only.
+        if ($job->metadata !== []) {
+            $builder->setParent(TraceContextPropagator::getInstance()->extract($job->metadata));
+        }
+
+        $span = $builder
             ->setSpanKind(SpanKind::KIND_CONSUMER)
             ->setAttribute('messaging.destination.name', $job->queue)
             ->setAttribute('kinetis.job.class', $job->class)
