@@ -78,6 +78,9 @@ own `bootstrap.php`.
 |---|---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Collector's OTLP/HTTP base URL. Unset = tracing off (no-op provider). |
 | `OTEL_SERVICE_NAME` | `kinetis` | The `service.name` resource attribute. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | — | Export headers, `key=value,key2=value2` — a hosted backend's auth. |
+| `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | Standard sampler names; `traceidratio` + `OTEL_TRACES_SAMPLER_ARG` for a rate. |
+| `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Ratio for the `traceidratio` samplers, `0`–`1`. |
 
 ## Installation
 
