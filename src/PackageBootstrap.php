@@ -7,6 +7,8 @@ namespace Kinetis\Telemetry;
 use Kinetis\Config\Config;
 use Kinetis\Container\AppScope;
 use Kinetis\Container\PackageBootstrapInterface;
+use Kinetis\Instrumentation\Telemetry;
+use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use OpenTelemetry\API\Trace\NoopTracerProvider;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\Context;
@@ -44,6 +46,12 @@ final readonly class PackageBootstrap implements PackageBootstrapInterface
         }
 
         $app->instance(TracerProviderInterface::class, $provider);
+        // The framework's instrumentation hooks all fire through this
+        // process-wide holder; swapping the backend here is what turns
+        // them into spans everywhere at once — entry points, drivers,
+        // and the queue worker included, regardless of what was
+        // constructed before this bootstrap ran.
+        Telemetry::global()->swap(new OtelTelemetry($provider));
         register_shutdown_function($provider->shutdown(...));
     }
 }

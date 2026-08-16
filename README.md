@@ -45,6 +45,13 @@ Installing this package auto-registers, via `extra.kinetis`:
   `OpenTelemetry\API\Trace\TracerProviderInterface` — the OTLP-exporting
   provider when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, a no-op provider
   otherwise, so an unconfigured install costs near nothing.
+- **The framework's instrumentation hooks, turned on** — when the OTLP
+  endpoint is set, the bootstrap swaps an OTel backend into core's
+  `Kinetis\Instrumentation\Telemetry` holder, so the spans the
+  framework reports from inside itself (boot phases, per-middleware
+  timing, route match, hydration, controller, queries split at the
+  pool boundary, transactions, `concurrently()` tasks, events, MCP
+  calls, queue jobs) start exporting with no further wiring.
 
 Nothing else. The decorators below are explicit opt-ins wired in your
 own `bootstrap.php`.
