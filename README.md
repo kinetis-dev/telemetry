@@ -1,19 +1,32 @@
-# kinetis/telemetry
+<p align="center">
+  <img src="logo.svg" alt="Kinetis" width="420">
+</p>
 
-OpenTelemetry tracing for [Kinetis](https://kinetis.dev): a span per
-request, per SQL query, per queue job, and per outgoing HTTP call,
-exported over OTLP to any tracing backend. Export goes through
-`kinetis/revolt-http-client`'s Fiber-suspending transport, so flushing
-a span batch never blocks the worker.
+<p align="center">
+  <strong>kinetis/telemetry</strong>
+  <br>
+  <strong>OpenTelemetry tracing for Kinetis</strong>
+</p>
+
+<p align="center">
+  <a href="https://packagist.org/packages/kinetis/telemetry"><img src="https://img.shields.io/packagist/v/kinetis/telemetry?label=version" alt="Packagist Version"></a>
+  <a href="https://packagist.org/packages/kinetis/telemetry"><img src="https://img.shields.io/packagist/dt/kinetis/telemetry" alt="Packagist Downloads"></a>
+  <a href="https://packagist.org/packages/kinetis/telemetry"><img src="https://img.shields.io/packagist/php-v/kinetis/telemetry" alt="PHP Version"></a>
+  <a href="https://packagist.org/packages/kinetis/telemetry"><img src="https://img.shields.io/packagist/l/kinetis/telemetry" alt="License"></a>
+  <a href="https://github.com/kinetis-dev/kinetis/actions/workflows/ci.yml"><img src="https://github.com/kinetis-dev/kinetis/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
+
+---
+
+A span per request, per SQL query, per queue job, and per outgoing
+HTTP call, exported over OTLP to any tracing backend. Export goes
+through `kinetis/revolt-http-client`'s Fiber-suspending transport, so
+flushing a span batch never blocks the worker.
 
 The distinctive trace this produces: spans that *overlap in time*. A
 request running two queries and an HTTP call through `concurrently()`
 shows all three side by side inside the request span — what
 non-blocking I/O actually did for that request, visible.
-
-```sh
-composer require kinetis/telemetry
-```
 
 Set one environment variable and requests start tracing:
 
@@ -59,5 +72,15 @@ own `bootstrap.php`.
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Collector's OTLP/HTTP base URL. Unset = tracing off (no-op provider). |
 | `OTEL_SERVICE_NAME` | `kinetis` | The `service.name` resource attribute. |
 
-See the [full documentation](https://docs.kinetis.dev/telemetry.html)
-for wiring examples and the disclosed scope boundaries.
+## Installation
+
+```sh
+composer require kinetis/telemetry
+```
+
+Requires PHP 8.4+. Full documentation:
+[docs.kinetis.dev/telemetry.html](https://docs.kinetis.dev/telemetry.html).
+
+## License
+
+MIT — see [LICENSE](../../LICENSE).
