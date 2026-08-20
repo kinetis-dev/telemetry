@@ -89,7 +89,7 @@ composer require kinetis/telemetry
 ```
 
 Requires PHP 8.4+. Full documentation:
-[docs.kinetis.dev/telemetry.html](https://docs.kinetis.dev/telemetry.html).
+[kinetis.dev/docs/telemetry.html](https://kinetis.dev/docs/telemetry.html).
 
 ## License
 
