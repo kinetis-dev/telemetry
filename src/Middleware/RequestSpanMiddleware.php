@@ -19,9 +19,11 @@ use Throwable;
 /**
  * One server span per request, discovered as global middleware the
  * moment this package is installed. Priority 90 puts it outermost among
- * discovered middleware (`ExceptionHandlerMiddleware` alone stays
- * outside it), so the span covers routing, the rest of the pipeline,
- * and the controller.
+ * discovered middleware — the built-in global middlewares
+ * (`GlobalMiddlewareOrder::resolve()`) and any explicit
+ * `AppScope::middleware()` registration always run ahead of it
+ * regardless of priority — so the span covers routing, the rest of the
+ * pipeline, and the controller.
  *
  * The span is activated for its duration, which is what parents every
  * other span this package produces — a query, a queue push, an outgoing
