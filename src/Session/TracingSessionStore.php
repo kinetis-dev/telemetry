@@ -42,7 +42,7 @@ final class TracingSessionStore implements SessionStoreInterface
 
     public function __construct(
         private readonly SessionStoreInterface $inner,
-        private readonly TracerProviderInterface $tracerProvider,
+        TracerProviderInterface $tracerProvider,
     ) {
         $this->tracer = $tracerProvider->getTracer('kinetis');
     }

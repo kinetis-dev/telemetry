@@ -37,7 +37,7 @@ final class TracingSimpleCache implements CacheInterface
 
     public function __construct(
         private readonly CacheInterface $inner,
-        private readonly TracerProviderInterface $tracerProvider,
+        TracerProviderInterface $tracerProvider,
     ) {
         $this->tracer = $tracerProvider->getTracer('kinetis');
     }

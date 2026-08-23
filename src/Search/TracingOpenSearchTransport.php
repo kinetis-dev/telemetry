@@ -46,7 +46,7 @@ final readonly class TracingOpenSearchTransport implements ClientInterface
 
     public function __construct(
         private ClientInterface $inner,
-        private TracerProviderInterface $tracerProvider,
+        TracerProviderInterface $tracerProvider,
     ) {
         $this->tracer = $tracerProvider->getTracer('kinetis');
     }
