@@ -67,6 +67,13 @@ final class TracingSimpleCache implements CacheInterface
     }
 
     /**
+     * $keys is materialized once, into $keyList, and it's $keyList —
+     * never the original $keys — that's both recorded on the span and
+     * delegated to $inner: a Generator or any other non-rewindable
+     * Iterator is exhausted the moment `iterator_to_array()` reads it,
+     * so passing the original $keys through to $inner afterward would
+     * hand it nothing left to yield.
+     *
      * @param iterable<string> $keys
      */
     #[\Override]
@@ -74,18 +81,25 @@ final class TracingSimpleCache implements CacheInterface
     {
         $keyList = array_values(is_array($keys) ? $keys : iterator_to_array($keys, false));
 
-        return $this->traced('getMultiple', $keyList, fn (): iterable => $this->inner->getMultiple($keys, $default));
+        return $this->traced('getMultiple', $keyList, fn (): iterable => $this->inner->getMultiple($keyList, $default));
     }
 
     /**
+     * $values is materialized once, into $valueMap, preserving its own
+     * keys (the cache keys PSR-16's `setMultiple()` reads from
+     * `$values`' own iteration keys, not its values) — $valueMap is
+     * what's delegated to $inner, for the identical exhausted-iterable
+     * reason `getMultiple()`'s own docblock explains.
+     *
      * @param iterable<string, mixed> $values
      */
     #[\Override]
     public function setMultiple(iterable $values, DateInterval|int|null $ttl = null): bool
     {
-        $keyList = array_keys(is_array($values) ? $values : iterator_to_array($values));
+        $valueMap = is_array($values) ? $values : iterator_to_array($values);
+        $keyList = array_keys($valueMap);
 
-        return $this->traced('setMultiple', $keyList, fn (): bool => $this->inner->setMultiple($values, $ttl));
+        return $this->traced('setMultiple', $keyList, fn (): bool => $this->inner->setMultiple($valueMap, $ttl));
     }
 
     /**
@@ -96,7 +110,7 @@ final class TracingSimpleCache implements CacheInterface
     {
         $keyList = array_values(is_array($keys) ? $keys : iterator_to_array($keys, false));
 
-        return $this->traced('deleteMultiple', $keyList, fn (): bool => $this->inner->deleteMultiple($keys));
+        return $this->traced('deleteMultiple', $keyList, fn (): bool => $this->inner->deleteMultiple($keyList));
     }
 
     #[\Override]

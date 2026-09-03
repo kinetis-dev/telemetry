@@ -14,6 +14,7 @@ use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\ScopeInterface;
+use Throwable;
 use WeakMap;
 
 /**
@@ -66,6 +67,11 @@ final class TracingQueue implements QueueInterface
 
         try {
             $this->inner->push($job, $delaySeconds, $queue, $maxAttempts);
+        } catch (Throwable $e) {
+            $span->recordException($e);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+
+            throw $e;
         } finally {
             $span->end();
         }
@@ -109,9 +115,13 @@ final class TracingQueue implements QueueInterface
     {
         try {
             $this->inner->ack($job);
-        } finally {
-            $this->finish($job, 'ack');
+        } catch (Throwable $e) {
+            $this->finishWithError($job, 'ack_error', $e);
+
+            throw $e;
         }
+
+        $this->finish($job, 'ack');
     }
 
     #[\Override]
@@ -119,9 +129,13 @@ final class TracingQueue implements QueueInterface
     {
         try {
             $this->inner->release($job);
-        } finally {
-            $this->finish($job, 'release');
+        } catch (Throwable $e) {
+            $this->finishWithError($job, 'release_error', $e);
+
+            throw $e;
         }
+
+        $this->finish($job, 'release');
     }
 
     #[\Override]
@@ -129,11 +143,19 @@ final class TracingQueue implements QueueInterface
     {
         try {
             $this->inner->fail($job);
-        } finally {
-            $span = $this->consuming[$job]['span'] ?? null;
-            $span?->setStatus(StatusCode::STATUS_ERROR);
-            $this->finish($job, 'fail');
+        } catch (Throwable $e) {
+            $this->finishWithError($job, 'fail_error', $e);
+
+            throw $e;
         }
+
+        // The job itself is what failed here, not this operation — the
+        // span still reports an error outcome even though $inner->fail()
+        // itself completed successfully; that's the whole point of
+        // calling fail() in the first place.
+        $span = $this->consuming[$job]['span'] ?? null;
+        $span?->setStatus(StatusCode::STATUS_ERROR);
+        $this->finish($job, 'fail');
     }
 
     #[\Override]
@@ -146,6 +168,27 @@ final class TracingQueue implements QueueInterface
     public function clear(string $queue = 'default'): int
     {
         return $this->inner->clear($queue);
+    }
+
+    /**
+     * Records $e on $job's own consumer span (if this decorator is the
+     * one that popped it — a job it never saw simply has nothing to
+     * record onto, matching `finish()`'s own no-op for that case) and
+     * closes it with $outcome instead of whatever the calling method's
+     * own successful outcome value would have been, so an infrastructure
+     * failure calling into $inner can never be exported looking like the
+     * terminal operation it was attempting actually succeeded.
+     */
+    private function finishWithError(QueuedJob $job, string $outcome, Throwable $e): void
+    {
+        $span = $this->consuming[$job]['span'] ?? null;
+
+        if ($span !== null) {
+            $span->recordException($e);
+            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+        }
+
+        $this->finish($job, $outcome);
     }
 
     private function finish(QueuedJob $job, string $outcome): void

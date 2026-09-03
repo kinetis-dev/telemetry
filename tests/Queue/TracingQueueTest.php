@@ -8,10 +8,12 @@ use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
 use Kinetis\Telemetry\Queue\TracingQueue;
 use Kinetis\Telemetry\Tests\Fixtures\FakeQueue;
+use Kinetis\Telemetry\Tests\Fixtures\ThrowingQueue;
 use Kinetis\Telemetry\Tests\TracingTestCase;
 use OpenTelemetry\API\Trace\Span;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
+use RuntimeException;
 
 final class TracingQueueTest extends TracingTestCase
 {
@@ -131,6 +133,127 @@ final class TracingQueueTest extends TracingTestCase
 
         self::assertSame(7, $queue->size());
         self::assertSame(3, $queue->clear());
+        self::assertSame([], $this->spans());
+    }
+
+    public function test_a_failing_push_records_the_exception_and_marks_the_span_as_an_error(): void
+    {
+        $queue = new TracingQueue(new ThrowingQueue(['push']), $this->tracerProvider);
+        $job = new class implements Job {};
+
+        try {
+            $queue->push($job, queue: 'emails');
+
+            self::fail('Expected the push failure to propagate.');
+        } catch (RuntimeException $e) {
+            self::assertSame('push failed', $e->getMessage());
+        }
+
+        self::assertCount(1, $this->spans());
+        $span = $this->span();
+        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
+        self::assertNotSame([], $span->getEvents());
+    }
+
+    public function test_a_failing_ack_records_the_exception_marks_error_and_uses_a_failed_outcome(): void
+    {
+        $queuedJob = new QueuedJob('App\\SendEmail', [], null, 'default');
+        $queue = new TracingQueue(new ThrowingQueue(['ack'], $queuedJob), $this->tracerProvider);
+
+        $queue->pop();
+
+        try {
+            $queue->ack($queuedJob);
+
+            self::fail('Expected the ack failure to propagate.');
+        } catch (RuntimeException $e) {
+            self::assertSame('ack failed', $e->getMessage());
+        }
+
+        self::assertCount(1, $this->spans());
+        $span = $this->span();
+        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
+        self::assertNotSame([], $span->getEvents());
+        self::assertSame('ack_error', $span->getAttributes()->get('kinetis.job.outcome'));
+
+        // The consumer span's own scope is detached on the failure path
+        // exactly as it is on success — no longer reported as current.
+        self::assertFalse(Span::getCurrent()->getContext()->isValid());
+    }
+
+    public function test_a_failing_release_records_the_exception_marks_error_and_uses_a_failed_outcome(): void
+    {
+        $queuedJob = new QueuedJob('App\\SendEmail', [], null, 'default');
+        $queue = new TracingQueue(new ThrowingQueue(['release'], $queuedJob), $this->tracerProvider);
+
+        $queue->pop();
+
+        try {
+            $queue->release($queuedJob);
+
+            self::fail('Expected the release failure to propagate.');
+        } catch (RuntimeException $e) {
+            self::assertSame('release failed', $e->getMessage());
+        }
+
+        self::assertCount(1, $this->spans());
+        $span = $this->span();
+        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
+        self::assertNotSame([], $span->getEvents());
+        self::assertSame('release_error', $span->getAttributes()->get('kinetis.job.outcome'));
+        self::assertFalse(Span::getCurrent()->getContext()->isValid());
+    }
+
+    /**
+     * Distinct from the already-covered "the job itself failed" case
+     * (`test_fail_marks_the_span_as_an_error`, where `$inner->fail()`
+     * itself succeeds): here the backend's own `fail()` call is what
+     * throws — an infrastructure failure, not the intended outcome —
+     * and must be recorded and reported as its own distinct outcome.
+     */
+    public function test_a_failing_fail_records_the_exception_marks_error_and_uses_a_failed_outcome(): void
+    {
+        $queuedJob = new QueuedJob('App\\SendEmail', [], null, 'default');
+        $queue = new TracingQueue(new ThrowingQueue(['fail'], $queuedJob), $this->tracerProvider);
+
+        $queue->pop();
+
+        try {
+            $queue->fail($queuedJob);
+
+            self::fail('Expected the fail failure to propagate.');
+        } catch (RuntimeException $e) {
+            self::assertSame('fail failed', $e->getMessage());
+        }
+
+        self::assertCount(1, $this->spans());
+        $span = $this->span();
+        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
+        self::assertNotSame([], $span->getEvents());
+        self::assertSame('fail_error', $span->getAttributes()->get('kinetis.job.outcome'));
+        self::assertFalse(Span::getCurrent()->getContext()->isValid());
+    }
+
+    /**
+     * A job this instance never popped has no span to touch at all —
+     * `finishWithError()`'s own null-span guard must make that a safe
+     * no-op rather than a crash, while the real exception still
+     * propagates untouched.
+     */
+    public function test_a_failing_ack_for_a_job_this_instance_never_popped_still_propagates_with_no_span(): void
+    {
+        $inner = new ThrowingQueue(['ack']);
+        $queue = new TracingQueue($inner, $this->tracerProvider);
+
+        try {
+            $queue->ack(new QueuedJob('App\\SendEmail', [], null, 'default'));
+
+            self::fail('Expected the ack failure to propagate.');
+        } catch (RuntimeException $e) {
+            self::assertSame('ack failed', $e->getMessage());
+        }
+
+        self::assertSame(['ack'], $inner->events);
         self::assertSame([], $this->spans());
     }
 }

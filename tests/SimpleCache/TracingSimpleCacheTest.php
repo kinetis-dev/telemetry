@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Tests\SimpleCache;
 
+use Generator;
 use Kinetis\Telemetry\SimpleCache\TracingSimpleCache;
 use Kinetis\Telemetry\Tests\Fixtures\FakeSimpleCache;
 use Kinetis\Telemetry\Tests\TracingTestCase;
@@ -82,5 +83,78 @@ final class TracingSimpleCacheTest extends TracingTestCase
 
         $cache->delete('key');
         self::assertFalse($cache->has('key'));
+    }
+
+    /**
+     * A Generator is exhausted the moment something reads it to
+     * completion — materializing it once for the span attribute must
+     * not leave the inner cache with nothing left to iterate. The inner
+     * fixture's own `getMultiple()` does a real `foreach` over whatever
+     * it's handed, so an exhausted iterable here would silently return
+     * an empty result instead of throwing.
+     */
+    public function test_get_multiple_with_a_generator_still_reaches_the_inner_cache_complete(): void
+    {
+        $inner = new FakeSimpleCache();
+        $inner->set('a', '1');
+        $inner->set('b', '2');
+        $inner->set('c', '3');
+
+        $cache = new TracingSimpleCache($inner, $this->tracerProvider);
+
+        $result = iterator_to_array($cache->getMultiple($this->generatorOf(['a', 'b', 'c'])));
+
+        self::assertSame(['a' => '1', 'b' => '2', 'c' => '3'], $result);
+        self::assertSame(['a', 'b', 'c'], $this->span()->getAttributes()->get('db.keys'));
+    }
+
+    public function test_set_multiple_with_a_generator_still_reaches_the_inner_cache_complete(): void
+    {
+        $inner = new FakeSimpleCache();
+        $cache = new TracingSimpleCache($inner, $this->tracerProvider);
+
+        $result = $cache->setMultiple($this->generatorOfPairs(['a' => '1', 'b' => '2', 'c' => '3']));
+
+        self::assertTrue($result);
+        self::assertSame('1', $inner->get('a'));
+        self::assertSame('2', $inner->get('b'));
+        self::assertSame('3', $inner->get('c'));
+        self::assertSame(['a', 'b', 'c'], $this->span()->getAttributes()->get('db.keys'));
+    }
+
+    public function test_delete_multiple_with_a_generator_still_reaches_the_inner_cache_complete(): void
+    {
+        $inner = new FakeSimpleCache();
+        $inner->set('a', '1');
+        $inner->set('b', '2');
+        $inner->set('c', '3');
+
+        $cache = new TracingSimpleCache($inner, $this->tracerProvider);
+
+        $result = $cache->deleteMultiple($this->generatorOf(['a', 'b', 'c']));
+
+        self::assertTrue($result);
+        self::assertFalse($inner->has('a'));
+        self::assertFalse($inner->has('b'));
+        self::assertFalse($inner->has('c'));
+        self::assertSame(['a', 'b', 'c'], $this->span()->getAttributes()->get('db.keys'));
+    }
+
+    /**
+     * @param list<string> $values
+     * @return Generator<int, string>
+     */
+    private function generatorOf(array $values): Generator
+    {
+        yield from $values;
+    }
+
+    /**
+     * @param array<string, mixed> $pairs
+     * @return Generator<string, mixed>
+     */
+    private function generatorOfPairs(array $pairs): Generator
+    {
+        yield from $pairs;
     }
 }

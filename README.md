@@ -18,9 +18,13 @@
 
 ---
 
+Part of [Kinetis](https://kinetis.dev/), a non-blocking PHP framework for
+API-first applications, developed in the
+[kinetis-dev/kinetis](https://github.com/kinetis-dev/kinetis) monorepo.
+
 A span per request, per SQL query, per queue job, and per outgoing
 HTTP call, exported over OTLP to any tracing backend. Export goes
-through `kinetis/revolt-http-client`'s Fiber-suspending transport, so
+through [`kinetis/revolt-http-client`](https://github.com/kinetis-dev/revolt-http-client)'s Fiber-suspending transport, so
 flushing a span batch never blocks the worker.
 
 The distinctive trace this produces: spans that *overlap in time*. A
@@ -60,7 +64,7 @@ own `bootstrap.php`.
 
 - `TracingMysqlLink` / `TracingPostgresLink` — a span per SQL query
   (named by first keyword, full SQL as `db.query.text`, parameter
-  values never recorded), wrapping any `kinetis/persistence` link while
+  values never recorded), wrapping any [`kinetis/persistence`](https://github.com/kinetis-dev/persistence) link while
   keeping its dialect marker. Transactions they begin span `COMMIT` and
   `ROLLBACK` too.
 - `TracingQueue` — a producer span per `push()`; a consumer span from
@@ -73,7 +77,7 @@ own `bootstrap.php`.
   PSR-16 `CacheInterface`. Keys travel as span attributes; values never
   do.
 - `TracingSessionStore` — a span per `read`/`write`/`destroy`, wrapping
-  any `kinetis/session` `SessionStoreInterface`. The session id never
+  any [`kinetis/session`](https://github.com/kinetis-dev/session) `SessionStoreInterface`. The session id never
   travels verbatim (it's a bearer credential) — only a short hash
   fingerprint does.
 - `TracingOpenSearchTransport` — a span per OpenSearch call, wrapping
@@ -98,7 +102,9 @@ own `bootstrap.php`.
 composer require kinetis/telemetry
 ```
 
-Requires PHP 8.4+. Full documentation:
+Requires PHP 8.4+, [`kinetis/framework`](https://github.com/kinetis-dev/framework),
+and [`kinetis/revolt-http-client`](https://github.com/kinetis-dev/revolt-http-client).
+Full documentation:
 [kinetis.dev/docs/telemetry.html](https://kinetis.dev/docs/telemetry.html).
 
 ## License
