@@ -169,26 +169,7 @@ final readonly class TracingHttpClient implements HttpClientInterface
      */
     private static function replacePropagationHeaders(array $headers, array $carrier): array
     {
-        /** @var array<string, true> $taintedNames */
-        $taintedNames = [];
-
-        foreach ($headers as $key => $value) {
-            $name = self::headerNameOf($key, $value);
-
-            if ($name === null) {
-                continue;
-            }
-
-            $lower = strtolower($name);
-
-            if (in_array($lower, TraceContextPropagator::FIELDS, true)) {
-                continue;
-            }
-
-            if (self::cleanValuesOf($key, $value) === null) {
-                $taintedNames[$lower] = true;
-            }
-        }
+        $taintedNames = self::detectTaintedNames($headers);
 
         $result = [];
         /** @var array<string, array{name: string, values: list<string>}> $named */
@@ -223,6 +204,43 @@ final readonly class TracingHttpClient implements HttpClientInterface
         }
 
         return $result;
+    }
+
+    /**
+     * Every lowercase header name (excluding trace-context fields
+     * themselves) whose value couldn't be cleanly resolved by
+     * cleanValuesOf() — the signal replacePropagationHeaders() uses to
+     * fall back to preserving that name's own entries untouched rather
+     * than regrouping them. A pure first pass, computed independently
+     * of anything the second pass builds.
+     *
+     * @param array<array-key, mixed> $headers
+     * @return array<string, true>
+     */
+    private static function detectTaintedNames(array $headers): array
+    {
+        /** @var array<string, true> $taintedNames */
+        $taintedNames = [];
+
+        foreach ($headers as $key => $value) {
+            $name = self::headerNameOf($key, $value);
+
+            if ($name === null) {
+                continue;
+            }
+
+            $lower = strtolower($name);
+
+            if (in_array($lower, TraceContextPropagator::FIELDS, true)) {
+                continue;
+            }
+
+            if (self::cleanValuesOf($key, $value) === null) {
+                $taintedNames[$lower] = true;
+            }
+        }
+
+        return $taintedNames;
     }
 
     /**
