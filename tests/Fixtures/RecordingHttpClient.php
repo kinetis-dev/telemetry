@@ -24,10 +24,27 @@ final class RecordingHttpClient implements HttpClientInterface
     /** @var array<string, mixed> */
     public array $lastOptions = [];
 
+    public string $lastMethod = '';
+
+    public string $lastUrl = '';
+
+    /**
+     * $failWith makes `request()` throw after recording, the shape a
+     * client that validates a URL eagerly produces — and the shape
+     * whose exception message quotes that URL back.
+     */
+    public function __construct(private readonly ?string $failWith = null) {}
+
     #[\Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
+        $this->lastMethod = $method;
+        $this->lastUrl = $url;
         $this->lastOptions = $options;
+
+        if ($this->failWith !== null) {
+            throw new RuntimeException($this->failWith);
+        }
 
         return new MockResponse('{}');
     }

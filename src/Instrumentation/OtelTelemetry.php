@@ -5,10 +5,11 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\Instrumentation;
 
 use Kinetis\Instrumentation\TelemetryInterface;
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\SpanKind;
-use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\Context;
@@ -27,6 +28,15 @@ use Throwable;
  * concurrently() batch, MCP tool calls, and worker jobs. Query and
  * per-task spans never activate: they can overlap across fibers on the
  * shared context, and activating them would interleave the scope stack.
+ *
+ * The hooks hand over the same operation inputs the decorators see, and
+ * they reach a span under the same rules — {@see Redaction} states
+ * them: the SQL a driver reports and the path a request arrived on
+ * never travel, and neither does the message or stack trace of whatever
+ * failure ends a hook pair. The MCP tool name and resource URI are the
+ * exception that needs no handling: `McpDispatcher` reports them only
+ * after resolving them against the registry, so both are members of a
+ * closed registered set rather than caller-supplied text.
  */
 final readonly class OtelTelemetry implements TelemetryInterface
 {
@@ -46,10 +56,18 @@ final readonly class OtelTelemetry implements TelemetryInterface
             ->end((int) ($endedAt * 1_000_000_000));
     }
 
+    /**
+     * The path this hook reports is the raw request target, so it stops
+     * here: what describes the request without naming the record it
+     * addressed is the template the router resolves it to, which
+     * arrives moments later through {@see routeMatchEnded()} as
+     * `http.route`. A request that matches no route carries the method
+     * alone, which is the whole of what is known about it.
+     */
     #[\Override]
     public function routeMatchStarted(string $method, string $path): mixed
     {
-        return $this->start('route.match', ['http.request.method' => $method, 'url.path' => $path]);
+        return $this->start('route.match', ['http.request.method' => Redaction::httpMethod($method)]);
     }
 
     #[\Override]
@@ -113,11 +131,15 @@ final readonly class OtelTelemetry implements TelemetryInterface
     #[\Override]
     public function queryDispatched(string $system, string $sql): mixed
     {
-        $keyword = strtok(ltrim($sql), " \t\n\r(");
+        $operation = Redaction::sqlOperation($sql);
 
         return $this->start(
-            $keyword === false ? 'SQL' : strtoupper($keyword),
-            ['db.system.name' => $system, 'db.query.text' => $sql],
+            $operation,
+            [
+                'db.system.name' => $system,
+                'db.operation.name' => $operation,
+                'kinetis.db.query_fingerprint' => Redaction::fingerprint(FingerprintDomain::SqlStatement, $sql),
+            ],
             kind: SpanKind::KIND_CLIENT,
         );
     }
@@ -324,8 +346,7 @@ final readonly class OtelTelemetry implements TelemetryInterface
         [$span, $scope] = $token;
 
         if ($failure !== null) {
-            $span->recordException($failure);
-            $span->setStatus(StatusCode::STATUS_ERROR, $failure->getMessage());
+            Redaction::recordFailure($span, $failure);
         }
 
         if ($scope instanceof ScopeInterface) {

@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\HttpClient;
 
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanKind;
-use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\Context;
@@ -31,6 +32,17 @@ use Throwable;
  * duration. When composing with `Http::withRetries()`, wrap this
  * decorator first and add retries on top: each attempt then gets its
  * own span, so the failure that triggered a retry stays visible.
+ *
+ * The URL and the method reach `$inner` exactly as the caller wrote
+ * them, and reach the span only through {@see Redaction} — scheme,
+ * host and port from the URL, the method from a closed vocabulary. An
+ * outgoing URL is caller-supplied and holds a credential often enough
+ * that no other part of it can travel: `https://user:pass@host/`, an
+ * API key or a signature as a query parameter, a token in the
+ * fragment, a reset token or a document id as a path segment. A
+ * general-purpose client has no route template to reduce a path to
+ * either, so the whole URL's fingerprint is what correlates repeat
+ * calls instead.
  */
 final readonly class TracingHttpClient implements HttpClientInterface
 {
@@ -49,10 +61,11 @@ final readonly class TracingHttpClient implements HttpClientInterface
     #[\Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
-        $span = $this->tracer->spanBuilder($method === '' ? 'HTTP' : $method)
+        $span = $this->tracer->spanBuilder(Redaction::httpSpanName($method))
             ->setSpanKind(SpanKind::KIND_CLIENT)
-            ->setAttribute('http.request.method', $method)
-            ->setAttribute('url.full', $url)
+            ->setAttribute('http.request.method', Redaction::httpMethod($method))
+            ->setAttribute('kinetis.http.url_fingerprint', Redaction::fingerprint(FingerprintDomain::HttpUrl, $url))
+            ->setAttributes(Redaction::urlAttributes($url))
             ->startSpan();
 
         $carrier = [];
@@ -78,15 +91,14 @@ final readonly class TracingHttpClient implements HttpClientInterface
         // option/URL, a decorator that validates eagerly) — caught here
         // specifically because TracingResponse's own deferred lifecycle
         // (its guarded()/finish() pair) never comes into existence when
-        // that happens, so nothing else would ever end this span. The
-        // exception's own message is the only thing recorded — never
-        // $options/$headers, which may carry the propagation header or
-        // whatever auth this call itself was made with.
+        // that happens, so nothing else would ever end this span. A
+        // client's own exception message quotes the URL it was handed,
+        // credentials included, which is why only the exception's class
+        // is recorded; $options/$headers never reach the span at all.
         try {
             $response = $this->inner->request($method, $url, $options);
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
             $span->end();
 
             throw $e;

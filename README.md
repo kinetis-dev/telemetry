@@ -43,8 +43,8 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
 Installing this package auto-registers, via `extra.kinetis`:
 
 - **Global middleware** `RequestSpanMiddleware` — one server span per
-  request (method, `url.path`, status, `php.memory.usage`; an incoming
-  `traceparent` joins the caller's trace).
+  request (method, status, `php.memory.usage`; an incoming `traceparent`
+  joins the caller's trace).
 - **A container binding** for
   `OpenTelemetry\API\Trace\TracerProviderInterface` — the OTLP-exporting
   provider when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, a no-op provider
@@ -63,8 +63,8 @@ own `bootstrap.php`.
 ## Decorators
 
 - `TracingMysqlLink` / `TracingPostgresLink` — a span per SQL query
-  (named by first keyword, full SQL as `db.query.text`, parameter
-  values never recorded), wrapping any [`kinetis/persistence`](https://github.com/kinetis-dev/persistence) link while
+  (named by its opening keyword, with a fingerprint of the statement
+  and the number of parameters bound), wrapping any [`kinetis/persistence`](https://github.com/kinetis-dev/persistence) link while
   keeping its dialect marker. Transactions they begin span `COMMIT` and
   `ROLLBACK` too.
 - `TracingQueue` — a producer span per `push()`; a consumer span from
@@ -72,19 +72,56 @@ own `bootstrap.php`.
   while the job runs so its own queries and HTTP calls nest under it.
 - `TracingHttpClient` — a client span per outgoing request with
   `traceparent` injection, ending when the response is consumed rather
-  than when `request()` returns. Hand it to `Http` as its transport.
+  than when `request()` returns. Carries the URL's scheme, host and
+  port. Hand it to `Http` as its transport.
 - `TracingSimpleCache` — a span per cache operation, wrapping any
-  PSR-16 `CacheInterface`. Keys travel as span attributes; values never
-  do.
+  PSR-16 `CacheInterface`. A key-list fingerprint and a batch size
+  travel; neither the keys nor the values do.
 - `TracingSessionStore` — a span per `read`/`write`/`destroy`, wrapping
   any [`kinetis/session`](https://github.com/kinetis-dev/session) `SessionStoreInterface`. The session id never
-  travels verbatim (it's a bearer credential) — only a short hash
-  fingerprint does.
+  travels verbatim (it's a bearer credential) — only its fingerprint
+  does.
 - `TracingOpenSearchTransport` — a span per OpenSearch call, wrapping
   the PSR-18 client via `OpenSearchClientFactory::fromConfig()`'s
   `transportDecorator` parameter.
 - `TraceAwareLogger` — wraps any PSR-3 logger, adding the active span's
   `trace_id`/`span_id` to every entry's context.
+
+## What never reaches a span
+
+A trace is exported to a third-party backend, retained there, and
+readable by everyone with access to it — a wider audience than the
+database, cache, or upstream service an operation's input was addressed
+to. So a span here describes an operation and never the data it
+carried. Every decorator and hook routes an operation's inputs through
+one internal policy point, and there is no setting that turns it off:
+
+| Never exported | Exported instead |
+|---|---|
+| A SQL statement, its literal values, its bound parameters | The opening keyword from a fixed vocabulary, a fingerprint of the statement, the parameter count |
+| A cache key, single or batched, and every cached value | A fingerprint of the operation's key list, and `db.operation.batch.size` for the multi-key methods |
+| A URL's userinfo, path, query string, and fragment | `url.scheme`, `server.address`, `server.port`, and a fingerprint of the whole URL |
+| An incoming request's path or query string | The method, and the router's own template as `http.route` on the `route.match` span |
+| An OpenSearch index name, document id or alias | The action from a fixed vocabulary, and a fingerprint of the path |
+| A session id, and the session payload | A fingerprint of the id |
+| A failure's message and stack trace | The exception's type — an anonymous subclass reports its nearest named ancestor — as the span status and as an `exception` event's `exception.type` |
+
+A fingerprint is a 128-bit SHA-256 prefix: two spans covering the same
+statement, key list, URL or path carry the same one, so a backend still
+groups them, and neither carries the value. Each digest covers the kind
+of input as well as the input, so one byte sequence seen as a cache key
+and as a URL fingerprints differently in each. It is pseudonymous
+correlation data, not a secret — the digest is unkeyed, so a value
+drawn from an enumerable set stays guessable to anyone who can hash
+candidates. A failing operation's exception propagates unchanged, so an
+application that wants the message logs it where its own redaction
+policy applies — `TraceAwareLogger` puts the trace id on that log line,
+which joins the two back together.
+
+Span names and the attributes that say what an operation did come from
+closed vocabularies for the same reason — the rule, and what each
+vocabulary falls back to, is stated once at
+[kinetis.dev/docs/telemetry.html](https://kinetis.dev/docs/telemetry.html#what-never-reaches-a-span).
 
 ## Configuration
 

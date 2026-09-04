@@ -10,10 +10,15 @@ use RuntimeException;
 
 /**
  * An in-memory PSR-16 cache; `$failWith` makes every call throw
- * instead, for the error path.
+ * instead, for the error path. Every key handed to it lands in
+ * `$seenKeys` first, so a test can prove the real key reached the
+ * cache whichever path the call took.
  */
 final class FakeSimpleCache implements CacheInterface
 {
+    /** @var list<string> */
+    public array $seenKeys = [];
+
     /** @var array<string, mixed> */
     private array $data = [];
 
@@ -22,7 +27,7 @@ final class FakeSimpleCache implements CacheInterface
     #[\Override]
     public function get(string $key, mixed $default = null): mixed
     {
-        $this->guard();
+        $this->guard($key);
 
         return $this->data[$key] ?? $default;
     }
@@ -30,7 +35,7 @@ final class FakeSimpleCache implements CacheInterface
     #[\Override]
     public function set(string $key, mixed $value, DateInterval|int|null $ttl = null): bool
     {
-        $this->guard();
+        $this->guard($key);
         $this->data[$key] = $value;
 
         return true;
@@ -39,7 +44,7 @@ final class FakeSimpleCache implements CacheInterface
     #[\Override]
     public function delete(string $key): bool
     {
-        $this->guard();
+        $this->guard($key);
         unset($this->data[$key]);
 
         return true;
@@ -62,10 +67,10 @@ final class FakeSimpleCache implements CacheInterface
     public function getMultiple(iterable $keys, mixed $default = null): iterable
     {
         $this->guard();
-
         $result = [];
 
         foreach ($keys as $key) {
+            $this->guard($key);
             $result[$key] = $this->data[$key] ?? $default;
         }
 
@@ -81,6 +86,7 @@ final class FakeSimpleCache implements CacheInterface
         $this->guard();
 
         foreach ($values as $key => $value) {
+            $this->guard((string) $key);
             $this->data[$key] = $value;
         }
 
@@ -96,6 +102,7 @@ final class FakeSimpleCache implements CacheInterface
         $this->guard();
 
         foreach ($keys as $key) {
+            $this->guard($key);
             unset($this->data[$key]);
         }
 
@@ -105,13 +112,17 @@ final class FakeSimpleCache implements CacheInterface
     #[\Override]
     public function has(string $key): bool
     {
-        $this->guard();
+        $this->guard($key);
 
         return array_key_exists($key, $this->data);
     }
 
-    private function guard(): void
+    private function guard(?string $key = null): void
     {
+        if ($key !== null) {
+            $this->seenKeys[] = $key;
+        }
+
         if ($this->failWith !== null) {
             throw new RuntimeException($this->failWith);
         }

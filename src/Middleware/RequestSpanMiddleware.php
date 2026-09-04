@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\Middleware;
 
 use Kinetis\Http\Attributes\AsGlobalMiddleware;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
@@ -31,10 +32,19 @@ use Throwable;
  * `concurrently()` tasks.
  *
  * An incoming `traceparent` header makes the span a child of the
- * caller's trace; the span name stays the bare method per OTel's HTTP
- * semantic conventions, since the matched route template isn't visible
- * to global middleware and a raw path would explode name cardinality —
- * the path travels as the `url.path` attribute instead.
+ * caller's trace; the span name is the request's method, resolved
+ * through {@see Redaction}'s own vocabulary, per OTel's HTTP semantic
+ * conventions.
+ *
+ * No form of the request target travels on this span. A path is
+ * caller-supplied and carries user ids, email addresses, document ids
+ * and signed or single-use tokens as its segments, and the one shape of
+ * it that would be safe — the matched route template — belongs to the
+ * router, which runs inside `$handler` and publishes the match nowhere
+ * this middleware can read it afterward. The framework's own
+ * instrumentation hooks are where that template surfaces: with them
+ * active, `route.match` is a child span of this one carrying the
+ * template as `http.route`.
  */
 #[AsGlobalMiddleware(priority: 90)]
 final readonly class RequestSpanMiddleware implements MiddlewareInterface
@@ -52,11 +62,10 @@ final readonly class RequestSpanMiddleware implements MiddlewareInterface
         $parent = TraceContextPropagator::getInstance()->extract(array_change_key_case($request->getHeaders()));
 
         $method = $request->getMethod();
-        $span = $this->tracer->spanBuilder($method === '' ? 'HTTP' : $method)
+        $span = $this->tracer->spanBuilder(Redaction::httpSpanName($method))
             ->setParent($parent)
             ->setSpanKind(SpanKind::KIND_SERVER)
-            ->setAttribute('http.request.method', $method)
-            ->setAttribute('url.path', $request->getUri()->getPath())
+            ->setAttribute('http.request.method', Redaction::httpMethod($method))
             ->startSpan();
         $scope = $span->activate();
 
@@ -71,8 +80,7 @@ final readonly class RequestSpanMiddleware implements MiddlewareInterface
 
             return $response;
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
 
             throw $e;
         } finally {

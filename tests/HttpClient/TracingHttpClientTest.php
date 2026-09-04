@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\Tests\HttpClient;
 
 use Kinetis\Telemetry\HttpClient\TracingHttpClient;
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Tests\Fixtures\RecordingHttpClient;
 use Kinetis\Telemetry\Tests\Fixtures\ThrowingHttpClient;
 use Kinetis\Telemetry\Tests\TracingTestCase;
@@ -29,7 +31,13 @@ final class TracingHttpClientTest extends TracingTestCase
         $span = $this->span();
         self::assertSame('GET', $span->getName());
         self::assertSame(SpanKind::KIND_CLIENT, $span->getKind());
-        self::assertSame('https://api.test/orders', $span->getAttributes()->get('url.full'));
+        self::assertSame('https', $span->getAttributes()->get('url.scheme'));
+        self::assertSame('api.test', $span->getAttributes()->get('server.address'));
+        self::assertNull($span->getAttributes()->get('url.path'));
+        self::assertSame(
+            Redaction::fingerprint(FingerprintDomain::HttpUrl, 'https://api.test/orders'),
+            $span->getAttributes()->get('kinetis.http.url_fingerprint'),
+        );
         self::assertSame(200, $span->getAttributes()->get('http.response.status_code'));
     }
 

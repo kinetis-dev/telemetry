@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Search;
 
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
@@ -36,9 +38,12 @@ use Throwable;
  * call.
  *
  * OpenSearch's REST API is path-based (`POST /{index}/_search`,
- * `GET /{index}/_doc/{id}`, ...), so the span name is derived from the
- * request's own method and its last `_`-prefixed "action" path segment
- * — legible without parsing the request body's query DSL.
+ * `GET /{index}/_doc/{id}`, ...), so a span is named from the request's
+ * method and the action its path performs — legible without parsing the
+ * request body's query DSL. Both come from {@see Redaction}'s closed
+ * vocabularies: the rest of such a path is index names, aliases and
+ * document ids, which identify the records a request touched rather
+ * than what it did, so the path travels only as a fingerprint.
  */
 final readonly class TracingOpenSearchTransport implements ClientInterface
 {
@@ -54,11 +59,18 @@ final readonly class TracingOpenSearchTransport implements ClientInterface
     #[\Override]
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
-        $span = $this->tracer->spanBuilder($this->operationName($request))
+        $path = $request->getUri()->getPath();
+        $action = Redaction::searchAction($path);
+
+        $span = $this->tracer->spanBuilder(Redaction::httpSpanName($request->getMethod()) . ' ' . $action)
             ->setSpanKind(SpanKind::KIND_CLIENT)
             ->setAttribute('db.system.name', 'opensearch')
-            ->setAttribute('http.request.method', $request->getMethod())
-            ->setAttribute('url.path', $request->getUri()->getPath())
+            ->setAttribute('db.operation.name', $action)
+            ->setAttribute('http.request.method', Redaction::httpMethod($request->getMethod()))
+            ->setAttribute(
+                'kinetis.search.path_fingerprint',
+                Redaction::fingerprint(FingerprintDomain::SearchPath, $path),
+            )
             ->startSpan();
 
         try {
@@ -71,32 +83,11 @@ final readonly class TracingOpenSearchTransport implements ClientInterface
 
             return $response;
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
 
             throw $e;
         } finally {
             $span->end();
         }
-    }
-
-    /**
-     * @return non-empty-string
-     */
-    private function operationName(RequestInterface $request): string
-    {
-        $segments = array_values(array_filter(explode('/', $request->getUri()->getPath())));
-        $action = null;
-
-        foreach (array_reverse($segments) as $segment) {
-            if (str_starts_with($segment, '_')) {
-                $action = $segment;
-                break;
-            }
-        }
-
-        $action ??= $segments === [] ? 'request' : $segments[array_key_last($segments)];
-
-        return strtoupper($request->getMethod()) . ' ' . $action;
     }
 }

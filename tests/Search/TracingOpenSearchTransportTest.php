@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Tests\Search;
 
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Search\TracingOpenSearchTransport;
 use Kinetis\Telemetry\Tests\Fixtures\FakePsr18Client;
 use Kinetis\Telemetry\Tests\TracingTestCase;
@@ -25,7 +27,12 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
         self::assertSame('POST _search', $span->getName());
         self::assertSame(SpanKind::KIND_CLIENT, $span->getKind());
         self::assertSame('opensearch', $span->getAttributes()->get('db.system.name'));
-        self::assertSame('/orders/_search', $span->getAttributes()->get('url.path'));
+        self::assertSame('_search', $span->getAttributes()->get('db.operation.name'));
+        self::assertSame('POST', $span->getAttributes()->get('http.request.method'));
+        self::assertSame(
+            Redaction::fingerprint(FingerprintDomain::SearchPath, '/orders/_search'),
+            $span->getAttributes()->get('kinetis.search.path_fingerprint'),
+        );
         self::assertSame(200, $span->getAttributes()->get('http.response.status_code'));
     }
 
@@ -39,14 +46,37 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
         self::assertSame('GET _doc', $this->span()->getName());
     }
 
-    public function test_a_request_with_no_action_segment_falls_back_to_the_last_path_segment(): void
+    /**
+     * A path made only of index names and document ids names no action,
+     * so the span takes the fixed fallback rather than borrowing a
+     * segment — an index name is a business identifier, and a document
+     * id can be anything the application chose as a key.
+     */
+    public function test_a_request_with_no_action_segment_falls_back_to_a_fixed_name(): void
     {
         $inner = new FakePsr18Client();
         $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
 
         $transport->sendRequest(new Request('PUT', 'http://localhost:9200/orders'));
 
-        self::assertSame('PUT orders', $this->span()->getName());
+        $span = $this->span();
+        self::assertSame('PUT request', $span->getName());
+        self::assertSame('request', $span->getAttributes()->get('db.operation.name'));
+    }
+
+    /**
+     * A `_`-prefixed segment OpenSearch has no such action for is a
+     * segment the caller chose, so it takes the fallback too rather
+     * than being trusted for looking action-shaped.
+     */
+    public function test_an_unknown_underscore_segment_takes_the_fallback_rather_than_naming_the_span(): void
+    {
+        $inner = new FakePsr18Client();
+        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+
+        $transport->sendRequest(new Request('GET', 'http://localhost:9200/orders/_not_an_action'));
+
+        self::assertSame('GET request', $this->span()->getName());
     }
 
     public function test_an_error_status_marks_the_span_as_an_error_without_throwing(): void

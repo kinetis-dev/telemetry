@@ -18,7 +18,7 @@ use RuntimeException;
 
 final class RequestSpanMiddlewareTest extends TracingTestCase
 {
-    public function test_a_request_produces_a_server_span_with_method_path_and_status(): void
+    public function test_a_request_produces_a_server_span_with_the_method_and_status(): void
     {
         $middleware = new RequestSpanMiddleware($this->tracerProvider);
 
@@ -32,7 +32,7 @@ final class RequestSpanMiddlewareTest extends TracingTestCase
         self::assertSame('GET', $span->getName());
         self::assertSame(SpanKind::KIND_SERVER, $span->getKind());
         self::assertSame('GET', $span->getAttributes()->get('http.request.method'));
-        self::assertSame('/orders/42', $span->getAttributes()->get('url.path'));
+        self::assertNull($span->getAttributes()->get('url.path'));
         self::assertSame(200, $span->getAttributes()->get('http.response.status_code'));
         self::assertIsInt($span->getAttributes()->get('php.memory.usage'));
         self::assertSame(StatusCode::STATUS_UNSET, $span->getStatus()->getCode());
@@ -67,7 +67,7 @@ final class RequestSpanMiddlewareTest extends TracingTestCase
 
         $span = $this->span();
         self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
-        self::assertSame('controller exploded', $span->getStatus()->getDescription());
+        self::assertSame(RuntimeException::class, $span->getStatus()->getDescription());
         self::assertNotSame([], $span->getEvents());
     }
 

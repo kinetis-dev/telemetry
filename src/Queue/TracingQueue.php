@@ -7,6 +7,7 @@ namespace Kinetis\Telemetry\Queue;
 use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
 use Kinetis\Queue\QueueInterface;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\SpanKind;
@@ -68,8 +69,7 @@ final class TracingQueue implements QueueInterface
         try {
             $this->inner->push($job, $delaySeconds, $queue, $maxAttempts);
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
 
             throw $e;
         } finally {
@@ -184,8 +184,7 @@ final class TracingQueue implements QueueInterface
         $span = $this->consuming[$job]['span'] ?? null;
 
         if ($span !== null) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
         }
 
         $this->finish($job, $outcome);

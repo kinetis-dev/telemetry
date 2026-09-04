@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\Session;
 
 use Kinetis\Session\SessionStoreInterface;
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\SpanKind;
-use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use Throwable;
@@ -27,11 +28,11 @@ use Throwable;
  * A session id is a bearer credential — whoever holds it can present
  * the cookie and act as that session — so it never travels to a span
  * verbatim, the same reasoning `kinetis/auth`'s `TokenGenerator`/
- * `RevocationStore` never store a raw token either. A short SHA-256
- * prefix goes on the span instead: enough to correlate every span for
- * one session without handing an APM reader the credential itself. The
- * payload never travels at all, for the same reason SQL bound
- * parameters and cache values don't.
+ * `RevocationStore` never store a raw token either. What goes on the
+ * span is the {@see Redaction::fingerprint()} of it: enough to
+ * correlate every span for one session without handing an APM reader
+ * the credential itself. The payload never travels at all, under the
+ * same policy that keeps SQL statements and cache keys off a span.
  *
  * Spans are not activated: they read the current context (normally the
  * request span) as parent and end immediately.
@@ -85,14 +86,13 @@ final class TracingSessionStore implements SessionStoreInterface
         $span = $this->tracer->spanBuilder("session.{$operation}")
             ->setSpanKind(SpanKind::KIND_CLIENT)
             ->setAttribute('kinetis.session.operation', $operation)
-            ->setAttribute('kinetis.session.id_fingerprint', substr(hash('sha256', $id), 0, 12))
+            ->setAttribute('kinetis.session.id_fingerprint', Redaction::fingerprint(FingerprintDomain::SessionId, $id))
             ->startSpan();
 
         try {
             return $run();
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
 
             throw $e;
         } finally {

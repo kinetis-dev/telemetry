@@ -122,11 +122,11 @@ final class FakeMysqlLink implements MysqlLink
      */
     private function run(string $sql, array $params): SqlResult
     {
+        $this->calls[] = ['sql' => $sql, 'params' => $params];
+
         if ($this->failWith !== null) {
             throw new QueryException($this->failWith, $sql);
         }
-
-        $this->calls[] = ['sql' => $sql, 'params' => $params];
 
         return new FakeSqlResult();
     }

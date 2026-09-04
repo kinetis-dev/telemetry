@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Kinetis\Telemetry\SimpleCache;
 
 use DateInterval;
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\SpanKind;
-use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use Psr\SimpleCache\CacheInterface;
@@ -23,9 +24,13 @@ use Throwable;
  *         $app->get(TracerProviderInterface::class),
  *     ));
  *
- * Keys travel as span attributes — they are structured identifiers
- * (`user:123:profile`), not free-text input — but values never do, the
- * same discipline the SQL decorators apply to bound parameters.
+ * Neither keys nor values travel. A cache key is built from whatever
+ * identifies the thing being cached, which is routinely a user id, a
+ * tenant, a session id, or a password-reset token — the key is the
+ * sensitive part as often as the value is. A span carries a fingerprint
+ * of the operation's key list instead, so every span touching the same
+ * keys still groups together, plus the batch size for the multi-key
+ * methods; see {@see Redaction} for the policy behind that.
  *
  * Spans are not activated: they read the current context (normally the
  * request span) as parent and end immediately, so concurrent cache
@@ -81,7 +86,7 @@ final class TracingSimpleCache implements CacheInterface
     {
         $keyList = array_values(is_array($keys) ? $keys : iterator_to_array($keys, false));
 
-        return $this->traced('getMultiple', $keyList, fn (): iterable => $this->inner->getMultiple($keyList, $default));
+        return $this->traced('getMultiple', $keyList, fn (): iterable => $this->inner->getMultiple($keyList, $default), batch: true);
     }
 
     /**
@@ -99,7 +104,7 @@ final class TracingSimpleCache implements CacheInterface
         $valueMap = is_array($values) ? $values : iterator_to_array($values);
         $keyList = array_keys($valueMap);
 
-        return $this->traced('setMultiple', $keyList, fn (): bool => $this->inner->setMultiple($valueMap, $ttl));
+        return $this->traced('setMultiple', $keyList, fn (): bool => $this->inner->setMultiple($valueMap, $ttl), batch: true);
     }
 
     /**
@@ -110,7 +115,7 @@ final class TracingSimpleCache implements CacheInterface
     {
         $keyList = array_values(is_array($keys) ? $keys : iterator_to_array($keys, false));
 
-        return $this->traced('deleteMultiple', $keyList, fn (): bool => $this->inner->deleteMultiple($keyList));
+        return $this->traced('deleteMultiple', $keyList, fn (): bool => $this->inner->deleteMultiple($keyList), batch: true);
     }
 
     #[\Override]
@@ -120,13 +125,18 @@ final class TracingSimpleCache implements CacheInterface
     }
 
     /**
+     * $batch marks the three multi-key methods, which carry their key
+     * count as OTel's own `db.operation.batch.size` — a single-key
+     * method's count is its name, and `clear()` has no key list to
+     * fingerprint at all.
+     *
      * @template T
      * @param non-empty-string $operation
      * @param list<string> $keys
      * @param callable(): T $run
      * @return T
      */
-    private function traced(string $operation, array $keys, callable $run): mixed
+    private function traced(string $operation, array $keys, callable $run, bool $batch = false): mixed
     {
         $builder = $this->tracer->spanBuilder($operation)
             ->setSpanKind(SpanKind::KIND_CLIENT)
@@ -134,7 +144,14 @@ final class TracingSimpleCache implements CacheInterface
             ->setAttribute('db.operation.name', $operation);
 
         if ($keys !== []) {
-            $builder->setAttribute('db.keys', $keys);
+            $builder->setAttribute(
+                'kinetis.cache.key_fingerprint',
+                Redaction::fingerprint(FingerprintDomain::CacheKeys, ...$keys),
+            );
+        }
+
+        if ($batch) {
+            $builder->setAttribute('db.operation.batch.size', count($keys));
         }
 
         $span = $builder->startSpan();
@@ -142,8 +159,7 @@ final class TracingSimpleCache implements CacheInterface
         try {
             return $run();
         } catch (Throwable $e) {
-            $span->recordException($e);
-            $span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            Redaction::recordFailure($span, $e);
 
             throw $e;
         } finally {

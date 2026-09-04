@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\HttpClient;
 
+use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\StatusCode;
 use Symfony\Contracts\HttpClient\ResponseInterface;
@@ -111,8 +112,10 @@ final class TracingResponse implements ResponseInterface
         try {
             return $operation();
         } catch (Throwable $e) {
-            $this->span->recordException($e);
-            $this->span->setStatus(StatusCode::STATUS_ERROR, $e->getMessage());
+            // A transport exception names the URL it failed to reach,
+            // so only its class reaches the span — the same rule
+            // TracingHttpClient's own synchronous catch follows.
+            Redaction::recordFailure($this->span, $e);
             $this->finish();
 
             throw $e;

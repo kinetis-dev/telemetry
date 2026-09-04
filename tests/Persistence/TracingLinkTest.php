@@ -10,6 +10,8 @@ use Kinetis\Persistence\Exception\QueryException;
 use Kinetis\Telemetry\Persistence\TracingMysqlLink;
 use Kinetis\Telemetry\Persistence\TracingMysqlTransaction;
 use Kinetis\Telemetry\Persistence\TracingPostgresLink;
+use Kinetis\Telemetry\FingerprintDomain;
+use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Tests\Fixtures\FakeMysqlLink;
 use Kinetis\Telemetry\Tests\Fixtures\FakePostgresLink;
 use Kinetis\Telemetry\Tests\TracingTestCase;
@@ -18,7 +20,7 @@ use OpenTelemetry\API\Trace\StatusCode;
 
 final class TracingLinkTest extends TracingTestCase
 {
-    public function test_a_query_produces_a_client_span_named_by_its_first_keyword(): void
+    public function test_a_query_produces_a_client_span_named_by_its_opening_keyword(): void
     {
         $link = new TracingMysqlLink(new FakeMysqlLink(), $this->tracerProvider);
 
@@ -28,10 +30,55 @@ final class TracingLinkTest extends TracingTestCase
         self::assertSame('SELECT', $span->getName());
         self::assertSame(SpanKind::KIND_CLIENT, $span->getKind());
         self::assertSame('mysql', $span->getAttributes()->get('db.system.name'));
-        self::assertSame('SELECT * FROM orders', $span->getAttributes()->get('db.query.text'));
+        self::assertSame('SELECT', $span->getAttributes()->get('db.operation.name'));
+        self::assertSame(
+            Redaction::fingerprint(FingerprintDomain::SqlStatement, 'SELECT * FROM orders'),
+            $span->getAttributes()->get('kinetis.db.query_fingerprint'),
+        );
     }
 
-    public function test_execute_is_spanned_but_parameter_values_are_never_recorded(): void
+    /**
+     * Two runs of one statement share a fingerprint and a different
+     * statement gets a different one — what makes the attribute worth
+     * exporting, since grouping a backend's spans by statement is the
+     * diagnostic the raw text would otherwise have provided.
+     */
+    public function test_the_query_fingerprint_groups_identical_statements_and_separates_different_ones(): void
+    {
+        $link = new TracingMysqlLink(new FakeMysqlLink(), $this->tracerProvider);
+
+        $link->query('SELECT * FROM orders');
+        $link->query('SELECT * FROM orders');
+        $link->query('SELECT * FROM users');
+
+        [$first, $second, $third] = $this->spans();
+        self::assertSame(
+            $first->getAttributes()->get('kinetis.db.query_fingerprint'),
+            $second->getAttributes()->get('kinetis.db.query_fingerprint'),
+        );
+        self::assertNotSame(
+            $first->getAttributes()->get('kinetis.db.query_fingerprint'),
+            $third->getAttributes()->get('kinetis.db.query_fingerprint'),
+        );
+    }
+
+    /**
+     * A span name comes from a fixed keyword vocabulary, so a statement
+     * opening with anything else — including text a caller built — is
+     * named `SQL` rather than putting that first word on the span.
+     */
+    public function test_a_statement_outside_the_keyword_vocabulary_is_named_sql(): void
+    {
+        $link = new TracingMysqlLink(new FakeMysqlLink(), $this->tracerProvider);
+
+        $link->query("PLEASE-RUN 'hunter2'");
+
+        $span = $this->span();
+        self::assertSame('SQL', $span->getName());
+        self::assertSame('SQL', $span->getAttributes()->get('db.operation.name'));
+    }
+
+    public function test_execute_records_how_many_parameters_it_bound_and_none_of_their_values(): void
     {
         $link = new TracingMysqlLink(new FakeMysqlLink(), $this->tracerProvider);
 
@@ -39,10 +86,25 @@ final class TracingLinkTest extends TracingTestCase
 
         $span = $this->span();
         self::assertSame('INSERT', $span->getName());
+        self::assertSame(1, $span->getAttributes()->get('kinetis.db.parameter_count'));
         self::assertStringNotContainsString(
             'secret@example.test',
             var_export($span->getAttributes()->toArray(), true),
         );
+    }
+
+    /**
+     * `query()` binds no parameters by construction, which is a
+     * different fact from a prepared statement that bound zero — the
+     * attribute is absent rather than `0`.
+     */
+    public function test_query_carries_no_parameter_count_at_all(): void
+    {
+        $link = new TracingMysqlLink(new FakeMysqlLink(), $this->tracerProvider);
+
+        $link->query('SELECT 1');
+
+        self::assertNull($this->span()->getAttributes()->get('kinetis.db.parameter_count'));
     }
 
     public function test_a_failing_query_marks_the_span_as_an_error_and_rethrows(): void
