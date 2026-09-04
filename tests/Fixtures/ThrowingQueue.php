@@ -67,12 +67,6 @@ final class ThrowingQueue implements QueueInterface
         return 0;
     }
 
-    #[\Override]
-    public function clear(string $queue = 'default'): int
-    {
-        return 0;
-    }
-
     private function guard(string $operation): void
     {
         $this->events[] = $operation;

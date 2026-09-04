@@ -4,12 +4,12 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Tests\Fixtures;
 
+use Kinetis\Queue\ClearableQueueInterface;
 use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
-use Kinetis\Queue\QueueInterface;
 
 /** Hands back a fixed QueuedJob per pop() and records what happened. */
-final class FakeQueue implements QueueInterface
+final class FakeQueue implements ClearableQueueInterface
 {
     /** @var list<string> */
     public array $events = [];

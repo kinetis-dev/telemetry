@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Queue;
 
+use Kinetis\Queue\ClearableQueueInterface;
 use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
 use Kinetis\Queue\QueueInterface;
@@ -26,15 +27,27 @@ use WeakMap;
  * outcome. Register it around whatever the queue package's own
  * bootstrap bound:
  *
- *     $app->instance(QueueInterface::class, new TracingQueue(
+ *     $app->instance(QueueInterface::class, TracingQueue::wrap(
  *         QueueFactory::fromConfig($config),
  *         $app->get(TracerProviderInterface::class),
  *     ));
+ *
+ * wrap(), not `new`: a backend declaring
+ * Kinetis\Queue\ClearableQueueInterface keeps that capability through
+ * the decorator, via {@see ClearableTracingQueue}. This class covers
+ * QueueInterface alone, so constructing it directly around a clearable
+ * backend hides the clearing the backend can still do. Where the
+ * backend's own type already says it clears, {@see wrapClearable()}
+ * says so on the way out too, with nothing for the caller to narrow.
  *
  * The consumer span is activated for the job's duration, so spans a
  * job's own handle() produces — queries, HTTP calls — nest under it.
  * The worker loop runs pop → handle → ack strictly nested in one
  * fiber, which is what makes holding the scope across calls safe.
+ *
+ * Not final, and this is the only reason: {@see ClearableTracingQueue}
+ * extends it to add clear() to the interfaces it declares. No method
+ * here is written to be overridden.
  *
  * The consumer span joins the producer's trace whenever the job carries
  * propagation metadata — stored at push() time by the framework's
@@ -42,7 +55,7 @@ use WeakMap;
  * metadata (it has no way to reach the payload), so producer-side
  * propagation is hook-only; this decorator honors what it finds.
  */
-final class TracingQueue implements QueueInterface
+class TracingQueue implements QueueInterface
 {
     private readonly TracerInterface $tracer;
 
@@ -55,6 +68,46 @@ final class TracingQueue implements QueueInterface
     ) {
         $this->tracer = $tracerProvider->getTracer('kinetis');
         $this->consuming = new WeakMap();
+    }
+
+    /**
+     * Wraps $inner in spans, preserving whatever capabilities beyond
+     * QueueInterface it declares — ClearableQueueInterface being the
+     * only one, which a decorator can carry only by being a different
+     * class: the interfaces a class declares are fixed at compile time,
+     * while what it wraps is not.
+     *
+     * The return type follows the argument's, so wrapping a queue whose
+     * own type already says it clears yields one that still does. A
+     * plain QueueInterface argument — QueueFactory::fromConfig()'s own
+     * result, where the backend is a configuration value — yields a
+     * plain QueueInterface, matching what is actually known: the
+     * capability is there at run time whenever the backend has it, and
+     * a caller that needs it in the type either passes a queue already
+     * typed for it or calls wrapClearable().
+     *
+     * @template TQueue of QueueInterface
+     * @param TQueue $inner
+     * @return (TQueue is ClearableQueueInterface ? ClearableQueueInterface : QueueInterface)
+     */
+    public static function wrap(QueueInterface $inner, TracerProviderInterface $tracerProvider): QueueInterface
+    {
+        return $inner instanceof ClearableQueueInterface
+            ? new ClearableTracingQueue($inner, $tracerProvider)
+            : new self($inner, $tracerProvider);
+    }
+
+    /**
+     * wrap() for a backend whose own type already declares clearing —
+     * the same decorator, reached without a conditional type to read:
+     * an argument that does not clear is a compile-time error here
+     * rather than a capability quietly missing from the result.
+     */
+    public static function wrapClearable(
+        ClearableQueueInterface $inner,
+        TracerProviderInterface $tracerProvider,
+    ): ClearableQueueInterface {
+        return new ClearableTracingQueue($inner, $tracerProvider);
     }
 
     #[\Override]
@@ -162,12 +215,6 @@ final class TracingQueue implements QueueInterface
     public function size(string $queue = 'default'): int
     {
         return $this->inner->size($queue);
-    }
-
-    #[\Override]
-    public function clear(string $queue = 'default'): int
-    {
-        return $this->inner->clear($queue);
     }
 
     /**
