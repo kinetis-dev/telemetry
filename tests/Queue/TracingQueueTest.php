@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Tests\Queue;
 
+use Kinetis\Queue\ClearableQueueInterface;
 use Kinetis\Queue\Job;
 use Kinetis\Queue\QueuedJob;
+use Kinetis\Telemetry\Queue\ClearableTracingQueue;
 use Kinetis\Telemetry\Queue\TracingQueue;
 use Kinetis\Telemetry\Tests\Fixtures\FakeQueue;
 use Kinetis\Telemetry\Tests\Fixtures\ThrowingQueue;
@@ -127,13 +129,99 @@ final class TracingQueueTest extends TracingTestCase
         self::assertSame($producer->getTraceId(), $consumer->getTraceId());
     }
 
-    public function test_size_and_clear_delegate_without_spans(): void
+    public function test_size_delegates_without_spans(): void
     {
         $queue = new TracingQueue(new FakeQueue(), $this->tracerProvider);
 
         self::assertSame(7, $queue->size());
+        self::assertSame([], $this->spans());
+    }
+
+    public function test_wrap_keeps_a_clearable_backend_clearable(): void
+    {
+        $queue = TracingQueue::wrap(new FakeQueue(), $this->tracerProvider);
+
+        self::assertInstanceOf(ClearableTracingQueue::class, $queue);
+        self::assertInstanceOf(ClearableQueueInterface::class, $queue);
         self::assertSame(3, $queue->clear());
         self::assertSame([], $this->spans());
+    }
+
+    public function test_wrap_leaves_a_backend_that_cannot_clear_unclearable(): void
+    {
+        $queue = TracingQueue::wrap(new ThrowingQueue([]), $this->tracerProvider);
+
+        self::assertInstanceOf(TracingQueue::class, $queue);
+        self::assertNotInstanceOf(ClearableQueueInterface::class, $queue);
+    }
+
+    /**
+     * The decorator that clears is a TracingQueue, not a second wrapper
+     * holding one, so a caller typed on TracingQueue keeps working and
+     * there is one implementation of the job lifecycle to keep correct.
+     */
+    public function test_the_clearable_decorator_is_itself_a_tracing_queue(): void
+    {
+        $queue = TracingQueue::wrapClearable(new FakeQueue(), $this->tracerProvider);
+
+        self::assertInstanceOf(TracingQueue::class, $queue);
+        self::assertInstanceOf(ClearableTracingQueue::class, $queue);
+    }
+
+    /**
+     * wrapClearable() says in its own signature what wrap() can only say
+     * conditionally, so the result reaches a ClearableQueueInterface
+     * parameter with nothing for the caller to narrow — a decorator that
+     * stopped declaring the capability is a TypeError here.
+     */
+    public function test_wrap_clearable_returns_the_capability_type(): void
+    {
+        $queue = TracingQueue::wrapClearable(new FakeQueue(), $this->tracerProvider);
+
+        self::assertSame(3, self::clearThrough($queue));
+        self::assertSame([], $this->spans(), 'clear() is administrative and belongs to no job span.');
+    }
+
+    /**
+     * wrap()'s result follows its argument's type, so a backend already
+     * typed as clearable produces one that reaches the same parameter.
+     */
+    public function test_wrap_of_a_clearable_backend_reaches_the_capability_type(): void
+    {
+        $inner = new FakeQueue();
+
+        self::assertSame(3, self::clearThrough(TracingQueue::wrap($inner, $this->tracerProvider)));
+    }
+
+    public function test_the_clearable_decorator_still_traces_the_job_lifecycle(): void
+    {
+        $queuedJob = new QueuedJob('App\\SendEmail', [], null, 'emails', attempts: 2);
+        $inner = new FakeQueue($queuedJob);
+        $queue = TracingQueue::wrapClearable($inner, $this->tracerProvider);
+
+        $queue->push(new class implements Job {}, queue: 'emails');
+
+        $span = $this->span();
+        self::assertSame('emails publish', $span->getName());
+        self::assertSame(SpanKind::KIND_PRODUCER, $span->getKind());
+
+        // The whole popped-to-settled arc, inherited rather than
+        // re-implemented: a pass-through that forgot to open or close
+        // the consumer span would leave nothing here to read.
+        self::assertSame($queuedJob, $queue->pop());
+        $queue->ack($queuedJob);
+
+        $consumer = $this->span(1);
+        self::assertSame('emails process', $consumer->getName());
+        self::assertSame(SpanKind::KIND_CONSUMER, $consumer->getKind());
+        self::assertSame('ack', $consumer->getAttributes()->get('kinetis.job.outcome'));
+        self::assertSame(7, $queue->size());
+    }
+
+    /** Typed as the capability, which is what the tests above are for. */
+    private static function clearThrough(ClearableQueueInterface $queue): int
+    {
+        return $queue->clear();
     }
 
     public function test_a_failing_push_records_the_exception_and_marks_the_span_as_an_error(): void

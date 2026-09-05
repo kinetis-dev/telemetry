@@ -70,6 +70,13 @@ own `bootstrap.php`.
 - `TracingQueue` — a producer span per `push()`; a consumer span from
   `pop()` to `ack()`/`release()`/`fail()` carrying the outcome, active
   while the job runs so its own queries and HTTP calls nest under it.
+  Build it with `TracingQueue::wrap($queue, $tracerProvider)`, which
+  returns a `ClearableTracingQueue` for a backend declaring
+  [`kinetis/queue`](https://github.com/kinetis-dev/queue)'s
+  `ClearableQueueInterface` so wrapping the queue in spans doesn't cost
+  it `clear()`. `wrap()`'s return type follows its argument's;
+  `TracingQueue::wrapClearable()` takes a backend already typed as
+  clearable and returns one.
 - `TracingHttpClient` — a client span per outgoing request with
   `traceparent` injection, ending when the response is consumed rather
   than when `request()` returns. Carries the URL's scheme, host and
