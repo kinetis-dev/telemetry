@@ -15,9 +15,8 @@ use Throwable;
 
 /**
  * A span per cache operation, wrapping any PSR-16 `CacheInterface` —
- * `kinetis/cache-redis`'s `RedisSimpleCache`/`ClusteredRedisSimpleCache`
- * included. Register it around whatever the cache package's own
- * bootstrap bound:
+ * `kinetis/cache-redis`'s `RedisSimpleCache` included. Register it
+ * around whatever the cache package's own bootstrap bound:
  *
  *     $app->instance(CacheInterface::class, new TracingSimpleCache(
  *         RedisSimpleCache::fromConfig($config),

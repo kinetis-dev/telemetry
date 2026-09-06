@@ -24,6 +24,7 @@
         "kinetis/cache-redis": "dev-main",
         "kinetis/persistence": "dev-main",
         "kinetis/queue": "dev-main",
+        "kinetis/redis": "dev-main",
         "kinetis/search-opensearch": "dev-main",
         "kinetis/session": "dev-main",
         "phpstan/phpstan": "^2.2.8",
@@ -65,6 +66,10 @@
         {
             "type": "path",
             "url": "../cache-redis"
+        },
+        {
+            "type": "path",
+            "url": "../redis"
         },
         {
             "type": "path",

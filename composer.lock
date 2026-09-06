@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "21bd288ee10dad8a81dd60447e76c8d2",
+    "content-hash": "df7fd7df7262a0e0131f684c67dfffbf",
     "packages": [
         {
             "name": "amphp/amp",
@@ -1200,24 +1200,24 @@
         },
         {
             "name": "graham-campbell/result-type",
-            "version": "v1.1.4",
+            "version": "v1.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/GrahamCampbell/Result-Type.git",
-                "reference": "e01f4a821471308ba86aa202fed6698b6b695e3b"
+                "reference": "adccca3324eece92ca35463648c12b9e6293c05b"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/GrahamCampbell/Result-Type/zipball/e01f4a821471308ba86aa202fed6698b6b695e3b",
-                "reference": "e01f4a821471308ba86aa202fed6698b6b695e3b",
+                "url": "https://api.github.com/repos/GrahamCampbell/Result-Type/zipball/adccca3324eece92ca35463648c12b9e6293c05b",
+                "reference": "adccca3324eece92ca35463648c12b9e6293c05b",
                 "shasum": ""
             },
             "require": {
                 "php": "^7.2.5 || ^8.0",
-                "phpoption/phpoption": "^1.9.5"
+                "phpoption/phpoption": "^1.10"
             },
             "require-dev": {
-                "phpunit/phpunit": "^8.5.41 || ^9.6.22 || ^10.5.45 || ^11.5.7"
+                "phpunit/phpunit": "^8.5.52 || ^9.6.34 || ^10.5.63 || ^11.5.55 || ^12.5.14"
             },
             "type": "library",
             "autoload": {
@@ -1246,7 +1246,7 @@
             ],
             "support": {
                 "issues": "https://github.com/GrahamCampbell/Result-Type/issues",
-                "source": "https://github.com/GrahamCampbell/Result-Type/tree/v1.1.4"
+                "source": "https://github.com/GrahamCampbell/Result-Type/tree/v1.2.0"
             },
             "funding": [
                 {
@@ -1258,7 +1258,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-12-27T19:43:20+00:00"
+            "time": "2026-08-24T09:06:52+00:00"
         },
         {
             "name": "kelunik/certificate",
@@ -1389,11 +1389,12 @@
             "dist": {
                 "type": "path",
                 "url": "../revolt-http-client",
-                "reference": "51fcea623759ee586d001d30c008d852478cf4d2"
+                "reference": "ba276d0e8aaea2be29fcd45f1787443c3db73142"
             },
             "require": {
                 "amphp/http-client": "^5.3.6",
                 "php": "^8.4",
+                "revolt/event-loop": "^1.0.9",
                 "symfony/http-client": "^8.1.4",
                 "symfony/http-client-contracts": "^3.7.1"
             },
@@ -2335,16 +2336,16 @@
         },
         {
             "name": "phpoption/phpoption",
-            "version": "1.9.5",
+            "version": "1.10.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/schmittjoh/php-option.git",
-                "reference": "75365b91986c2405cf5e1e012c5595cd487a98be"
+                "reference": "67b192b6a42ec03944b972d6e633ddec78ad2c6d"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/schmittjoh/php-option/zipball/75365b91986c2405cf5e1e012c5595cd487a98be",
-                "reference": "75365b91986c2405cf5e1e012c5595cd487a98be",
+                "url": "https://api.github.com/repos/schmittjoh/php-option/zipball/67b192b6a42ec03944b972d6e633ddec78ad2c6d",
+                "reference": "67b192b6a42ec03944b972d6e633ddec78ad2c6d",
                 "shasum": ""
             },
             "require": {
@@ -2352,7 +2353,7 @@
             },
             "require-dev": {
                 "bamarni/composer-bin-plugin": "^1.8.2",
-                "phpunit/phpunit": "^8.5.44 || ^9.6.25 || ^10.5.53 || ^11.5.34"
+                "phpunit/phpunit": "^8.5.54 || ^9.6.36 || ^10.5.64 || ^11.5.56 || ^12.5.33"
             },
             "type": "library",
             "extra": {
@@ -2394,7 +2395,7 @@
             ],
             "support": {
                 "issues": "https://github.com/schmittjoh/php-option/issues",
-                "source": "https://github.com/schmittjoh/php-option/tree/1.9.5"
+                "source": "https://github.com/schmittjoh/php-option/tree/1.10.0"
             },
             "funding": [
                 {
@@ -2406,7 +2407,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2025-12-27T19:41:33+00:00"
+            "time": "2026-08-24T00:54:40+00:00"
         },
         {
             "name": "psr/container",
@@ -3834,23 +3835,23 @@
         },
         {
             "name": "vlucas/phpdotenv",
-            "version": "v5.6.4",
+            "version": "v5.7.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/vlucas/phpdotenv.git",
-                "reference": "416df702837983f8d5ff48c9c3fee4f5f57b980b"
+                "reference": "301c07936b16d88628b126b01d082ba153cf4c40"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/vlucas/phpdotenv/zipball/416df702837983f8d5ff48c9c3fee4f5f57b980b",
-                "reference": "416df702837983f8d5ff48c9c3fee4f5f57b980b",
+                "url": "https://api.github.com/repos/vlucas/phpdotenv/zipball/301c07936b16d88628b126b01d082ba153cf4c40",
+                "reference": "301c07936b16d88628b126b01d082ba153cf4c40",
                 "shasum": ""
             },
             "require": {
                 "ext-pcre": "*",
-                "graham-campbell/result-type": "^1.1.4",
+                "graham-campbell/result-type": "^1.2",
                 "php": "^7.2.5 || ^8.0",
-                "phpoption/phpoption": "^1.9.5",
+                "phpoption/phpoption": "^1.10",
                 "symfony/polyfill-ctype": "^1.26",
                 "symfony/polyfill-mbstring": "^1.26",
                 "symfony/polyfill-php80": "^1.26"
@@ -3894,7 +3895,7 @@
                     "homepage": "https://github.com/vlucas"
                 }
             ],
-            "description": "Loads environment variables from `.env` to `getenv()`, `$_ENV` and `$_SERVER` automagically.",
+            "description": "Loads environment variables from `.env` to `$_ENV` and `$_SERVER` automagically, and optionally to `getenv()`.",
             "keywords": [
                 "dotenv",
                 "env",
@@ -3902,7 +3903,7 @@
             ],
             "support": {
                 "issues": "https://github.com/vlucas/phpdotenv/issues",
-                "source": "https://github.com/vlucas/phpdotenv/tree/v5.6.4"
+                "source": "https://github.com/vlucas/phpdotenv/tree/v5.7.0"
             },
             "funding": [
                 {
@@ -3914,7 +3915,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-07-06T19:11:50+00:00"
+            "time": "2026-08-24T18:07:49+00:00"
         }
     ],
     "packages-dev": [
@@ -5131,7 +5132,7 @@
             "dist": {
                 "type": "path",
                 "url": "../cache-redis",
-                "reference": "c3d0a6fe0982fd846f8d6d9209596146d3b12a09"
+                "reference": "2933c9a27cdc2c44586570a23457a8cfdd645096"
             },
             "require": {
                 "amphp/amp": "^3.1.3",
@@ -5139,6 +5140,7 @@
                 "amphp/serialization": "^1.1.0",
                 "amphp/socket": "^2.4.0",
                 "kinetis/framework": "dev-main",
+                "kinetis/redis": "dev-main",
                 "php": "^8.4"
             },
             "require-dev": {
@@ -5169,7 +5171,7 @@
                     "name": "Alon Noy"
                 }
             ],
-            "description": "PSR-16 SimpleCache for Kinetis, backed by Redis (single-node or Cluster) via amphp/redis — non-blocking, Revolt-native, with TLS support.",
+            "description": "PSR-16 SimpleCache for Kinetis, backed by Redis (single-node or Cluster) over kinetis/redis — non-blocking, Revolt-native, with TLS support.",
             "transport-options": {
                 "relative": true
             }
@@ -5180,7 +5182,7 @@
             "dist": {
                 "type": "path",
                 "url": "../persistence",
-                "reference": "f8402ca22f24dd55c95fc91a00c76e72526dd100"
+                "reference": "2db4cfdd49889a77b60fbdc29d959803eeb1d6ce"
             },
             "require": {
                 "kinetis/framework": "dev-main",
@@ -5190,6 +5192,7 @@
             "require-dev": {
                 "infection/infection": "^0.35.0",
                 "kinetis/mcp": "dev-main",
+                "kinetis/queue": "dev-main",
                 "nyholm/psr7": "^1.8.2",
                 "phpstan/phpstan": "^2.2.8",
                 "phpunit/phpunit": "^12.5.33",
@@ -5284,6 +5287,55 @@
             }
         },
         {
+            "name": "kinetis/redis",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "../redis",
+                "reference": "9fbd71771e5abab9e9a07a52bd48559adb096623"
+            },
+            "require": {
+                "amphp/amp": "^3.1.3",
+                "amphp/redis": "^2.0.4",
+                "amphp/socket": "^2.4.0",
+                "php": "^8.4",
+                "revolt/event-loop": "^1.0.9"
+            },
+            "require-dev": {
+                "infection/infection": "^0.35.0",
+                "kinetis/framework": "dev-main",
+                "phpstan/phpstan": "^2.2.8",
+                "phpunit/phpunit": "^12.5.33",
+                "vimeo/psalm": "^6.16.1"
+            },
+            "type": "library",
+            "extra": {
+                "kinetis": []
+            },
+            "autoload": {
+                "psr-4": {
+                    "Kinetis\\Redis\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "Kinetis\\Redis\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Alon Noy"
+                }
+            ],
+            "description": "A non-replaying, deadline-bounded Redis transport for amphp/redis, with TLS, authentication, and Redis Cluster slot routing. Usable standalone, not only with Kinetis.",
+            "transport-options": {
+                "relative": true
+            }
+        },
+        {
             "name": "kinetis/search-opensearch",
             "version": "dev-main",
             "dist": {
@@ -5339,7 +5391,7 @@
             "dist": {
                 "type": "path",
                 "url": "../session",
-                "reference": "95007fc4e39c74c787cf515aedc844babd5f3bbd"
+                "reference": "324fb0872db618634cf491aa4989ccdb99db496c"
             },
             "require": {
                 "kinetis/framework": "dev-main",
@@ -5352,6 +5404,7 @@
                 "infection/infection": "^0.35.0",
                 "kinetis/cache-redis": "dev-main",
                 "kinetis/persistence": "dev-main",
+                "kinetis/redis": "dev-main",
                 "phpstan/phpstan": "^2.2.8",
                 "phpunit/phpunit": "^12.5.33",
                 "vimeo/psalm": "^6.16.1"
@@ -9242,6 +9295,7 @@
         "kinetis/framework": 20,
         "kinetis/persistence": 20,
         "kinetis/queue": 20,
+        "kinetis/redis": 20,
         "kinetis/revolt-http-client": 20,
         "kinetis/search-opensearch": 20,
         "kinetis/session": 20
