@@ -27,15 +27,15 @@ use Throwable;
  *             => new TracingOpenSearchTransport($client, $tracerProvider),
  *     );
  *
- * Composed after the factory's own Content-Type/auth/TLS options are
- * already applied, so this decorator never has to duplicate that
- * config-reading logic — it only ever sees a fully-configured client.
+ * Composed after the factory's own origin, deadline, response bound,
+ * Content-Type, auth and TLS options are already applied, so this
+ * decorator never has to duplicate that config-reading logic — it only
+ * ever sees a fully-configured client.
  *
- * PSR-18's `sendRequest()` is fully synchronous by contract (it always
- * hands back a complete response, never a lazy one), so unlike
- * `TracingHttpClient`/`TracingResponse` there is no deferred-consumption
- * span lifecycle to manage here — the span starts and ends around one
- * call.
+ * That client reads the status, headers and body before it returns, so
+ * unlike `TracingHttpClient`/`TracingResponse` there is no
+ * deferred-consumption span lifecycle to manage here — the span starts
+ * and ends around one call, and a body-phase failure falls inside it.
  *
  * OpenSearch's REST API is path-based (`POST /{index}/_search`,
  * `GET /{index}/_doc/{id}`, ...), so a span is named from the request's
