@@ -51,18 +51,26 @@ final class TracingSessionStoreTest extends TracingTestCase
         self::assertSame($first, $second);
     }
 
-    public function test_write_is_spanned_but_the_payload_is_never_recorded(): void
+    public function test_create_is_spanned_but_the_payload_is_never_recorded(): void
     {
         $store = new TracingSessionStore(new FakeSessionStore(), $this->tracerProvider);
 
-        $store->write('session-a', ['auth_user_id' => 'secret-user-42'], 3600);
+        $store->create('session-a', ['auth_user_id' => 'secret-user-42'], 3600);
 
         $span = $this->span();
-        self::assertSame('session.write', $span->getName());
+        self::assertSame('session.create', $span->getName());
         self::assertStringNotContainsString(
             'secret-user-42',
             var_export($span->getAttributes()->toArray(), true),
         );
+    }
+
+    public function test_a_refused_update_is_spanned_and_returned_unmodified(): void
+    {
+        $store = new TracingSessionStore(new FakeSessionStore(), $this->tracerProvider);
+
+        self::assertFalse($store->update('session-absent', ['flag' => true], 3600));
+        self::assertSame('session.update', $this->span()->getName());
     }
 
     public function test_a_failing_operation_marks_the_span_as_an_error_and_rethrows(): void
@@ -70,7 +78,7 @@ final class TracingSessionStoreTest extends TracingTestCase
         $store = new TracingSessionStore(new FakeSessionStore(failWith: 'disk full'), $this->tracerProvider);
 
         try {
-            $store->write('session-a', [], 3600);
+            $store->create('session-a', [], 3600);
             self::fail('Expected the store exception to propagate.');
         } catch (RuntimeException) {
         }
@@ -81,7 +89,7 @@ final class TracingSessionStoreTest extends TracingTestCase
     public function test_read_returns_the_inner_stores_result_unmodified(): void
     {
         $inner = new FakeSessionStore();
-        $inner->write('session-a', ['flag' => true], 3600);
+        $inner->create('session-a', ['flag' => true], 3600);
 
         $store = new TracingSessionStore($inner, $this->tracerProvider);
 

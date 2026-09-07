@@ -85,7 +85,7 @@ trace root.
 - `TracingSimpleCache` — a span per cache operation, wrapping any
   PSR-16 `CacheInterface`. A key-list fingerprint and a batch size
   travel; neither the keys nor the values do.
-- `TracingSessionStore` — a span per `read`/`write`/`destroy`, wrapping
+- `TracingSessionStore` — a span per `read`/`create`/`update`/`destroy`, wrapping
   any [`kinetis/session`](https://github.com/kinetis-dev/session) `SessionStoreInterface`. The session id never
   travels verbatim (it's a bearer credential) — only its fingerprint
   does.

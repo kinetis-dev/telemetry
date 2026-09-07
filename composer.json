@@ -34,7 +34,7 @@
         "kinetis/persistence": "Query and transaction spans, reported from inside the drivers through the framework's instrumentation hooks.",
         "kinetis/queue": "Producer and consumer job spans, reported by the queue backends and the worker through the framework's instrumentation hooks.",
         "kinetis/cache-redis": "Enables the TracingSimpleCache decorator — a span per cache operation.",
-        "kinetis/session": "Enables the TracingSessionStore decorator — a span per session read/write/destroy.",
+        "kinetis/session": "Enables the TracingSessionStore decorator — a span per session read, create, update and destroy.",
         "kinetis/search-opensearch": "Enables the TracingOpenSearchTransport decorator, via OpenSearchClientFactory's transportDecorator seam — a span per OpenSearch call."
     },
     "autoload": {

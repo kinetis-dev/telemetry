@@ -14,7 +14,7 @@ use Throwable;
 
 /**
  * A span per session-store call, wrapping any `SessionStoreInterface` —
- * `kinetis/session`'s file/cache/SQL stores included. `SESSION_DRIVER`'s
+ * `kinetis/session`'s file/Redis/SQL stores included. `SESSION_DRIVER`'s
  * own binding is a lazy factory resolved on first use, so re-binding in
  * `bootstrap.php` replaces it cleanly — the same pattern the session
  * package's own docs use for a custom store:
@@ -61,11 +61,24 @@ final class TracingSessionStore implements SessionStoreInterface
      * @param array<string, mixed> $data
      */
     #[\Override]
-    public function write(string $id, array $data, int $lifetimeSeconds): void
+    public function create(string $id, array $data, int $lifetimeSeconds): void
     {
-        $this->traced('write', $id, function () use ($id, $data, $lifetimeSeconds): void {
-            $this->inner->write($id, $data, $lifetimeSeconds);
+        $this->traced('create', $id, function () use ($id, $data, $lifetimeSeconds): void {
+            $this->inner->create($id, $data, $lifetimeSeconds);
         });
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    #[\Override]
+    public function update(string $id, array $data, int $lifetimeSeconds): bool
+    {
+        return $this->traced(
+            'update',
+            $id,
+            fn (): bool => $this->inner->update($id, $data, $lifetimeSeconds),
+        );
     }
 
     #[\Override]

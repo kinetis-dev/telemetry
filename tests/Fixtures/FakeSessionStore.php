@@ -33,10 +33,27 @@ final class FakeSessionStore implements SessionStoreInterface
      * @param array<string, mixed> $data
      */
     #[\Override]
-    public function write(string $id, array $data, int $lifetimeSeconds): void
+    public function create(string $id, array $data, int $lifetimeSeconds): void
     {
         $this->guard();
         $this->data[$id] = $data;
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    #[\Override]
+    public function update(string $id, array $data, int $lifetimeSeconds): bool
+    {
+        $this->guard();
+
+        if (!isset($this->data[$id])) {
+            return false;
+        }
+
+        $this->data[$id] = $data;
+
+        return true;
     }
 
     #[\Override]
