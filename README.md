@@ -52,31 +52,20 @@ Installing this package auto-registers, via `extra.kinetis`:
 - **The framework's instrumentation hooks, turned on** — when the OTLP
   endpoint is set, the bootstrap swaps an OTel backend into core's
   `Kinetis\Instrumentation\Telemetry` holder, so the spans the
-  framework reports from inside itself (boot phases, per-middleware
-  timing, route match, hydration, controller, queries split at the
-  pool boundary, transactions, `concurrently()` tasks, events, MCP
-  calls, queue jobs) start exporting with no further wiring.
+  framework reports from inside itself start exporting with no further
+  wiring: boot phases, per-middleware timing, route match, hydration,
+  controller, `concurrently()` tasks, events, MCP calls, and — this is
+  the whole of Kinetis-owned SQL and queue tracing, with nothing to
+  wrap by hand — a span per query split at the pool boundary, a
+  transaction span carrying its outcome, and producer and consumer job
+  spans joined into one trace across processes by a `traceparent` the
+  push hook stores with the job.
 
-Nothing else. The decorators below are explicit opt-ins wired in your
-own `bootstrap.php`.
+The decorators below are explicit opt-ins wired in your own
+`bootstrap.php`, for the boundaries the framework reports nothing from.
 
 ## Decorators
 
-- `TracingMysqlLink` / `TracingPostgresLink` — a span per SQL query
-  (named by its opening keyword, with a fingerprint of the statement
-  and the number of parameters bound), wrapping any [`kinetis/persistence`](https://github.com/kinetis-dev/persistence) link while
-  keeping its dialect marker. Transactions they begin span `COMMIT` and
-  `ROLLBACK` too.
-- `TracingQueue` — a producer span per `push()`; a consumer span from
-  `pop()` to `ack()`/`release()`/`fail()` carrying the outcome, active
-  while the job runs so its own queries and HTTP calls nest under it.
-  Build it with `TracingQueue::wrap($queue, $tracerProvider)`, which
-  returns a `ClearableTracingQueue` for a backend declaring
-  [`kinetis/queue`](https://github.com/kinetis-dev/queue)'s
-  `ClearableQueueInterface` so wrapping the queue in spans doesn't cost
-  it `clear()`. `wrap()`'s return type follows its argument's;
-  `TracingQueue::wrapClearable()` takes a backend already typed as
-  clearable and returns one.
 - `TracingHttpClient` — a client span per outgoing request with
   `traceparent` injection, ending when the response is consumed rather
   than when `request()` returns. Carries the URL's scheme, host and
@@ -105,7 +94,7 @@ one internal policy point, and there is no setting that turns it off:
 
 | Never exported | Exported instead |
 |---|---|
-| A SQL statement, its literal values, its bound parameters | The opening keyword from a fixed vocabulary, a fingerprint of the statement, the parameter count |
+| A SQL statement, its literal values, its bound parameters | The opening keyword from a fixed vocabulary, and a fingerprint of the statement |
 | A cache key, single or batched, and every cached value | A fingerprint of the operation's key list, and `db.operation.batch.size` for the multi-key methods |
 | A URL's userinfo, path, query string, and fragment | `url.scheme`, `server.address`, `server.port`, and a fingerprint of the whole URL |
 | An incoming request's path or query string | The method, and the router's own template as `http.route` on the `route.match` span |

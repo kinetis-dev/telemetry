@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Kinetis\Telemetry\Tests\Instrumentation;
 
+use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
+use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Tests\TracingTestCase;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
@@ -41,6 +43,11 @@ final class OtelTelemetryTest extends TracingTestCase
         self::assertSame('SELECT', $span->getName());
         self::assertSame(SpanKind::KIND_CLIENT, $span->getKind());
         self::assertSame('mysql', $span->getAttributes()->get('db.system.name'));
+        self::assertSame('SELECT', $span->getAttributes()->get('db.operation.name'));
+        self::assertSame(
+            Redaction::fingerprint(FingerprintDomain::SqlStatement, 'SELECT * FROM orders'),
+            $span->getAttributes()->get('kinetis.db.query_fingerprint'),
+        );
         self::assertCount(1, $span->getEvents());
         self::assertSame('server.started', $span->getEvents()[0]->getName());
     }
@@ -94,6 +101,8 @@ final class OtelTelemetryTest extends TracingTestCase
         $span = $this->span();
         self::assertSame('emails process', $span->getName());
         self::assertSame(SpanKind::KIND_CONSUMER, $span->getKind());
+        self::assertSame('emails', $span->getAttributes()->get('messaging.destination.name'));
+        self::assertSame('App\\SendEmail', $span->getAttributes()->get('kinetis.job.class'));
         self::assertSame(2, $span->getAttributes()->get('kinetis.job.attempt'));
         self::assertSame('release', $span->getAttributes()->get('kinetis.job.outcome'));
         self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
@@ -129,6 +138,10 @@ final class OtelTelemetryTest extends TracingTestCase
 
         self::assertArrayHasKey('traceparent', $metadata);
         $producer = $this->span();
+        self::assertSame('emails publish', $producer->getName());
+        self::assertSame(SpanKind::KIND_PRODUCER, $producer->getKind());
+        self::assertSame('emails', $producer->getAttributes()->get('messaging.destination.name'));
+        self::assertSame('App\\SendEmail', $producer->getAttributes()->get('kinetis.job.class'));
         self::assertStringContainsString($producer->getTraceId(), $metadata['traceparent']);
         self::assertStringContainsString($producer->getSpanId(), $metadata['traceparent']);
     }
@@ -136,6 +149,14 @@ final class OtelTelemetryTest extends TracingTestCase
     public function test_push_metadata_for_a_foreign_token_is_empty(): void
     {
         self::assertSame([], $this->telemetry->jobPushMetadata(null));
+    }
+
+    public function test_a_failing_push_marks_the_producer_span_as_an_error(): void
+    {
+        $token = $this->telemetry->jobPushStarted('App\\SendEmail', 'emails');
+        $this->telemetry->jobPushEnded($token, new RuntimeException('redis unreachable'));
+
+        self::assertSame(StatusCode::STATUS_ERROR, $this->span()->getStatus()->getCode());
     }
 
     public function test_a_consumer_span_with_metadata_joins_the_producers_trace(): void

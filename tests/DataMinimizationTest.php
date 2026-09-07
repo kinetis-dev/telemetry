@@ -8,12 +8,10 @@ use Kinetis\Persistence\Exception\QueryException;
 use Kinetis\Telemetry\HttpClient\TracingHttpClient;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use Kinetis\Telemetry\Middleware\RequestSpanMiddleware;
-use Kinetis\Telemetry\Persistence\TracingMysqlLink;
 use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Search\TracingOpenSearchTransport;
 use Kinetis\Telemetry\SimpleCache\TracingSimpleCache;
-use Kinetis\Telemetry\Tests\Fixtures\FakeMysqlLink;
 use Kinetis\Telemetry\Tests\Fixtures\FakePsr18Client;
 use Kinetis\Telemetry\Tests\Fixtures\FakeSimpleCache;
 use Kinetis\Telemetry\Tests\Fixtures\RecordingHttpClient;
@@ -34,11 +32,11 @@ use Throwable;
  * Every value below is planted: it appears nowhere else in the package,
  * so a single occurrence anywhere in an exported span is this policy
  * failing rather than a coincidence. Each test drives a real decorator
- * with one of them and then reads back everything a collector would
- * receive — span name, attributes, status description, and every event
- * with its own attributes — asserting the value is not in any of it,
- * while the same test proves the wrapped link, cache, or client was
- * handed the original input unaltered.
+ * or framework hook with one of them and then reads back everything a
+ * collector would receive — span name, attributes, status description,
+ * and every event with its own attributes — asserting the value is not
+ * in any of it, while the same test proves the wrapped cache, client or
+ * store was handed the original input unaltered.
  *
  * `Kinetis\Telemetry\Redaction` states the policy; this is where it is
  * held to it.
@@ -46,8 +44,6 @@ use Throwable;
 final class DataMinimizationTest extends TracingTestCase
 {
     private const string SECRET_SQL_LITERAL = 'tok-reset-L3AK-d41d8cd98f00';
-
-    private const string SECRET_PARAMETER = 'hunter2-P4SSW0RD-L3AK';
 
     private const string SECRET_DRIVER_MESSAGE = 'Duplicate entry L3AK-driver-echo-77b1 for key users.email';
 
@@ -74,73 +70,6 @@ final class DataMinimizationTest extends TracingTestCase
     private const string SECRET_DOCUMENT_ID = 'doc-L3AK-ident-c07b';
 
     private const string SECRET_FAILURE_MESSAGE = 'refused for tok-L3AK-anon-2f4b';
-
-    public function test_a_statements_literal_values_never_reach_an_exported_span(): void
-    {
-        $inner = new FakeMysqlLink();
-        $sql = "SELECT * FROM password_resets WHERE token = '" . self::SECRET_SQL_LITERAL . "'";
-
-        new TracingMysqlLink($inner, $this->tracerProvider)->query($sql);
-
-        self::assertSame($sql, $inner->calls[0]['sql']);
-        self::assertSame('SELECT', $this->span()->getName());
-        $this->assertNothingExported(self::SECRET_SQL_LITERAL, 'password_resets');
-    }
-
-    public function test_bound_parameter_values_never_reach_an_exported_span(): void
-    {
-        $inner = new FakeMysqlLink();
-        $params = [self::SECRET_PARAMETER, self::SECRET_SQL_LITERAL];
-
-        new TracingMysqlLink($inner, $this->tracerProvider)
-            ->execute('INSERT INTO users (password_hash, reset_token) VALUES (?, ?)', $params);
-
-        self::assertSame($params, $inner->calls[0]['params']);
-        self::assertSame(2, $this->span()->getAttributes()->get('kinetis.db.parameter_count'));
-        $this->assertNothingExported(self::SECRET_PARAMETER, self::SECRET_SQL_LITERAL);
-    }
-
-    /**
-     * A driver's own error message quotes the statement it rejected and
-     * the value that caused the rejection, which is why the span
-     * carries the exception's class and nothing else. The caller still
-     * receives the whole exception, message and statement included.
-     */
-    public function test_a_failing_query_exports_neither_the_statement_nor_the_drivers_message(): void
-    {
-        $inner = new FakeMysqlLink(failWith: self::SECRET_DRIVER_MESSAGE);
-        $sql = "INSERT INTO users (email) VALUES ('" . self::SECRET_SQL_LITERAL . "')";
-
-        try {
-            new TracingMysqlLink($inner, $this->tracerProvider)->query($sql);
-            self::fail('Expected the query exception to propagate.');
-        } catch (QueryException $e) {
-            self::assertSame(self::SECRET_DRIVER_MESSAGE, $e->getMessage());
-            self::assertSame($sql, $e->getQuery());
-        }
-
-        $span = $this->span();
-        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
-        self::assertSame(QueryException::class, $span->getStatus()->getDescription());
-        self::assertSame('exception', $span->getEvents()[0]->getName());
-        self::assertSame(QueryException::class, $span->getEvents()[0]->getAttributes()->get('exception.type'));
-        $this->assertNothingExported(self::SECRET_SQL_LITERAL, self::SECRET_DRIVER_MESSAGE);
-    }
-
-    public function test_a_transactions_statements_and_parameters_never_reach_an_exported_span(): void
-    {
-        $inner = new FakeMysqlLink();
-        $sql = "UPDATE users SET reset_token = '" . self::SECRET_SQL_LITERAL . "' WHERE id = ?";
-
-        $transaction = new TracingMysqlLink($inner, $this->tracerProvider)->beginTransaction();
-        $transaction->execute($sql, [self::SECRET_PARAMETER]);
-        $transaction->commit();
-
-        self::assertSame($sql, $inner->calls[0]['sql']);
-        self::assertSame([self::SECRET_PARAMETER], $inner->calls[0]['params']);
-        self::assertSame(['UPDATE', 'COMMIT'], array_map(static fn ($span) => $span->getName(), $this->spans()));
-        $this->assertNothingExported(self::SECRET_SQL_LITERAL, self::SECRET_PARAMETER);
-    }
 
     public function test_a_single_key_cache_operation_never_exports_the_key(): void
     {
@@ -397,11 +326,12 @@ final class DataMinimizationTest extends TracingTestCase
     }
 
     /**
-     * The framework's own query hook reports the same statement the
-     * decorator would, from inside the driver, and is held to the same
-     * rule — otherwise installing the package would export in the
-     * default configuration exactly what the opt-in decorator refuses
-     * to.
+     * The query hook is the whole SQL tracing path: a driver reports
+     * the statement it is about to run, and what reaches a span is the
+     * opening keyword and a fingerprint. A driver's own error message
+     * quotes the statement it rejected and the value that caused the
+     * rejection, so the span carries the exception's class and nothing
+     * else. The caller still receives the whole exception.
      */
     public function test_the_query_hook_exports_neither_the_statement_nor_the_failure_that_ended_it(): void
     {
