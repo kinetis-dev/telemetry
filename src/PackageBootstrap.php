@@ -11,8 +11,6 @@ use Kinetis\Instrumentation\Telemetry;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use OpenTelemetry\API\Trace\NoopTracerProvider;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
-use OpenTelemetry\Context\Context;
-use OpenTelemetry\Context\ContextStorage;
 
 /**
  * Registers `TracerProviderInterface` on the application container —
@@ -26,17 +24,6 @@ final readonly class PackageBootstrap implements PackageBootstrapInterface
     #[\Override]
     public function register(AppScope $app, Config $config): void
     {
-        // OTel's default context storage is Fiber-bound: a new Fiber
-        // starts with no context at all, so a span begun by the request
-        // middleware would be invisible inside a concurrently() task and
-        // every query span there would orphan into its own trace.
-        // Kinetis Fibers are scheduling units within one request, not
-        // independent execution contexts, so the shared storage is the
-        // correct semantics here. Only the middleware and the queue
-        // decorator ever activate a scope — both strictly nested in the
-        // main fiber — so the shared stack never interleaves.
-        Context::setStorage(new ContextStorage());
-
         $provider = TracerFactory::fromConfig($config);
 
         if ($provider === null) {

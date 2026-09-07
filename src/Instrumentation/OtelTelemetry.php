@@ -22,12 +22,22 @@ use Throwable;
  * PackageBootstrap swaps into `Telemetry::global()` when an OTLP
  * endpoint is configured.
  *
+ * Scope ownership is Fiber-local: OTel's default context storage binds
+ * a scope stack to the Fiber that attached it, so a scope attached in
+ * one cooperative task is invisible to — and cannot be detached out of
+ * order by — a sibling task suspended over the same stretch of time.
+ *
  * Which hooks *activate* their span (making it the parent of whatever
- * starts next) is the load-bearing choice: only strictly-nested,
- * single-fiber pairs do — middleware, controller, event/listener, the
- * concurrently() batch, MCP tool calls, and worker jobs. Query and
- * per-task spans never activate: they can overlap across fibers on the
- * shared context, and activating them would interleave the scope stack.
+ * starts next) is the load-bearing choice. The nested, same-Fiber pairs
+ * activate on whatever context their Fiber already carries: middleware,
+ * controller, event/listener, the concurrently() batch, and MCP tool
+ * calls. `taskStarted()` and `jobStarted()` activate on a parent context
+ * they build themselves — the batch span for a task, the propagated or
+ * root context for a job — because each begins on a Fiber whose context
+ * may be uninitialized, where reading the ambient context warns instead
+ * of answering. Query spans never activate at all: they overlap within a
+ * single Fiber, and activating them would interleave that Fiber's own
+ * stack.
  *
  * The hooks hand over the same operation inputs the decorators see, and
  * they reach a span under the same rules — {@see Redaction} states
@@ -183,10 +193,25 @@ final readonly class OtelTelemetry implements TelemetryInterface
         $this->end($token, null);
     }
 
+    /**
+     * A task begins on its own Fiber, which carries no context of its
+     * own, so the batch span reached through $batchToken is the explicit
+     * parent — and the base its scope attaches on. A token that carries
+     * no span (a backend failure contained by the facade, which hands
+     * every task `null`) makes the task a root instead of an orphan.
+     */
     #[\Override]
-    public function taskStarted(int $index): mixed
+    public function taskStarted(int $index, mixed $batchToken): mixed
     {
-        return $this->start('task ' . $index, ['kinetis.task.index' => $index]);
+        $root = Context::getRoot();
+        $batch = $this->spanOf($batchToken);
+
+        return $this->start(
+            'task ' . $index,
+            ['kinetis.task.index' => $index],
+            activate: true,
+            parent: $batch?->storeInContext($root) ?? $root,
+        );
     }
 
     #[\Override]
@@ -293,8 +318,13 @@ final readonly class OtelTelemetry implements TelemetryInterface
     {
         // Metadata carried from push() parents this consumer span into
         // the producer's own trace — one trace across processes. Without
-        // it, the span roots a fresh trace exactly as before.
-        $parent = $metadata === [] ? null : TraceContextPropagator::getInstance()->extract($metadata);
+        // it the job roots a trace of its own. Either way the parent is
+        // named, which is also the base this span's scope attaches on:
+        // a worker's job may begin on a Fiber that carries no context.
+        $root = Context::getRoot();
+        $parent = $metadata === []
+            ? $root
+            : TraceContextPropagator::getInstance()->extract($metadata, context: $root);
 
         return $this->start(
             "{$queue} process",
@@ -334,7 +364,19 @@ final readonly class OtelTelemetry implements TelemetryInterface
             ->setAttributes($attributes)
             ->startSpan();
 
-        return [$span, $activate ? $span->activate() : null];
+        if (!$activate) {
+            return [$span, null];
+        }
+
+        // An explicit parent is also the context the scope attaches on:
+        // `SpanInterface::activate()` would read the current context
+        // first, which is what a hook running on a Fiber of its own
+        // must not do. Without one, the hook is a nested pair on an
+        // initialized Fiber and inherits what that Fiber carries.
+        return [
+            $span,
+            $parent === null ? $span->activate() : $span->storeInContext($parent)->activate(),
+        ];
     }
 
     private function end(mixed $token, ?Throwable $failure): void

@@ -31,9 +31,10 @@ use Throwable;
  * keys still groups together, plus the batch size for the multi-key
  * methods; see {@see Redaction} for the policy behind that.
  *
- * Spans are not activated: they read the current context (normally the
- * request span) as parent and end immediately, so concurrent cache
- * calls inside `concurrently()` never interleave anyone's scope stack.
+ * Spans are not activated: they read their own Fiber's current context
+ * (the request span, or the task span inside a `concurrently()` task)
+ * as parent and end immediately, so concurrent cache calls never
+ * interleave that Fiber's scope stack.
  */
 final class TracingSimpleCache implements CacheInterface
 {

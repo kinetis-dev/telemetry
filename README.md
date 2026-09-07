@@ -64,6 +64,18 @@ Installing this package auto-registers, via `extra.kinetis`:
 The decorators below are explicit opt-ins wired in your own
 `bootstrap.php`, for the boundaries the framework reports nothing from.
 
+## Scope ownership across Fibers
+
+An active span's scope belongs to the Fiber that started it —
+OpenTelemetry's default Fiber-bound context storage stays in place — so
+two overlapping `concurrently()` tasks each keep their own stack and
+neither can detach the other's span. Parentage across a Fiber boundary
+is passed rather than read: the batch hook's token reaches each task
+hook and parents the task span to its batch, and a span starting on a
+Fiber that carries no context (a request span, a worker's job span)
+names its parent explicitly — the propagated `traceparent`, or the
+trace root.
+
 ## Decorators
 
 - `TracingHttpClient` — a client span per outgoing request with

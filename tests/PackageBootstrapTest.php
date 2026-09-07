@@ -12,8 +12,6 @@ use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use Kinetis\Telemetry\PackageBootstrap;
 use OpenTelemetry\API\Trace\NoopTracerProvider;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
-use OpenTelemetry\Context\Context;
-use OpenTelemetry\Context\ContextStorage;
 use OpenTelemetry\SDK\Trace\TracerProvider;
 use PHPUnit\Framework\TestCase;
 
@@ -39,13 +37,6 @@ final class PackageBootstrapTest extends TestCase
         $app->boot();
 
         self::assertInstanceOf(TracerProvider::class, $app->get(TracerProviderInterface::class));
-    }
-
-    public function test_the_shared_context_storage_replaces_the_fiber_bound_default(): void
-    {
-        new PackageBootstrap()->register(new AppScope(), new Config([]));
-
-        self::assertInstanceOf(ContextStorage::class, Context::storage());
     }
 
     public function test_with_an_endpoint_the_global_holder_gets_the_otel_backend(): void

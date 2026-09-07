@@ -183,15 +183,22 @@ final class OtelTelemetryTest extends TracingTestCase
         self::assertSame('0000000000000000', $this->span()->getParentSpanId());
     }
 
-    public function test_task_hooks_nest_under_the_batch(): void
+    public function test_task_hooks_nest_under_the_batch_token_they_are_handed(): void
     {
         $batch = $this->telemetry->taskBatchStarted(2);
-        $task = $this->telemetry->taskStarted(0);
+        $task = $this->telemetry->taskStarted(0, $batch);
         $this->telemetry->taskEnded($task, null);
         $this->telemetry->taskBatchEnded($batch);
 
         [$taskSpan, $batchSpan] = $this->spans();
         self::assertSame('concurrently', $batchSpan->getName());
         self::assertSame($batchSpan->getSpanId(), $taskSpan->getParentSpanId());
+    }
+
+    public function test_a_task_handed_no_usable_batch_token_roots_its_own_trace(): void
+    {
+        $this->telemetry->taskEnded($this->telemetry->taskStarted(0, null), null);
+
+        self::assertSame('0000000000000000', $this->span()->getParentSpanId());
     }
 }

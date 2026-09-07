@@ -11,6 +11,7 @@ use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
+use OpenTelemetry\Context\Context;
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
@@ -29,7 +30,13 @@ use Throwable;
  * The span is activated for its duration, which is what parents every
  * other span this package produces — a query, a queue push, an outgoing
  * HTTP call — under the request automatically, including inside
- * `concurrently()` tasks.
+ * `concurrently()` tasks, whose own hooks carry the request's context
+ * forward explicitly.
+ *
+ * A runtime may invoke the pipeline on a Fiber of its own, which carries
+ * no OpenTelemetry context. Both the extraction and the activation here
+ * therefore name their base context — the trace root — rather than
+ * reading the ambient one.
  *
  * An incoming `traceparent` header makes the span a child of the
  * caller's trace; the span name is the request's method, resolved
@@ -59,7 +66,10 @@ final readonly class RequestSpanMiddleware implements MiddlewareInterface
     #[\Override]
     public function process(ServerRequestInterface $request, RequestHandlerInterface $handler): ResponseInterface
     {
-        $parent = TraceContextPropagator::getInstance()->extract(array_change_key_case($request->getHeaders()));
+        $parent = TraceContextPropagator::getInstance()->extract(
+            array_change_key_case($request->getHeaders()),
+            context: Context::getRoot(),
+        );
 
         $method = $request->getMethod();
         $span = $this->tracer->spanBuilder(Redaction::httpSpanName($method))
@@ -67,7 +77,7 @@ final readonly class RequestSpanMiddleware implements MiddlewareInterface
             ->setSpanKind(SpanKind::KIND_SERVER)
             ->setAttribute('http.request.method', Redaction::httpMethod($method))
             ->startSpan();
-        $scope = $span->activate();
+        $scope = $span->storeInContext($parent)->activate();
 
         try {
             $response = $handler->handle($request);
