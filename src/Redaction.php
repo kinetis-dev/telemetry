@@ -111,20 +111,22 @@ final class Redaction
     public const string SEARCH_ACTION_OTHER = 'request';
 
     /**
-     * OpenSearch's own REST actions — the `_`-prefixed segment that
-     * says what a request does, as opposed to the index names and
-     * document ids around it. Only a segment in this list names a span;
-     * every other path, including one made entirely of index and
-     * document identifiers, resolves to {@see SEARCH_ACTION_OTHER}.
+     * The REST actions OpenSearch and Elasticsearch answer — the
+     * `_`-prefixed segment that says what a request does, as opposed to
+     * the index names and document ids around it. Only a segment in this
+     * list names a span; every other path, including one made entirely
+     * of index and document identifiers, resolves to
+     * {@see SEARCH_ACTION_OTHER}.
      *
      * @var list<non-empty-string>
      */
     private const array SEARCH_ACTIONS = [
-        '_alias', '_aliases', '_analyze', '_bulk', '_cat', '_clone', '_close', '_cluster', '_count', '_create',
-        '_delete_by_query', '_doc', '_explain', '_flush', '_forcemerge', '_ingest', '_mapping', '_mget',
-        '_msearch', '_nodes', '_open', '_pit', '_refresh', '_reindex', '_render', '_rollover', '_script',
-        '_scroll', '_search', '_settings', '_source', '_split', '_stats', '_tasks', '_template', '_update',
-        '_update_by_query',
+        '_alias', '_aliases', '_analyze', '_async_search', '_bulk', '_cat', '_clone', '_close', '_cluster',
+        '_count', '_create', '_delete_by_query', '_doc', '_explain', '_field_caps', '_flush', '_forcemerge',
+        '_ingest', '_knn_search', '_mapping', '_mget', '_msearch', '_mtermvectors', '_nodes', '_open', '_pit',
+        '_query', '_refresh', '_reindex', '_render', '_rollover', '_script', '_scroll', '_search',
+        '_search_shards', '_settings', '_source', '_split', '_stats', '_tasks', '_template', '_terms_enum',
+        '_termvectors', '_update', '_update_by_query',
     ];
 
     /**
@@ -225,7 +227,7 @@ final class Redaction
     }
 
     /**
-     * The OpenSearch action $path performs, read as its last segment
+     * The search action $path performs, read as its last segment
      * that {@see SEARCH_ACTIONS} lists, and
      * {@see SEARCH_ACTION_OTHER} when it lists none. A path segment is
      * an index name, a document id, or an alias as often as it is an

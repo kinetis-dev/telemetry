@@ -16,16 +16,18 @@ use Psr\Http\Message\ResponseInterface;
 use Throwable;
 
 /**
- * A client span per OpenSearch HTTP call, wrapping any PSR-18
- * `ClientInterface` — meant for the seam
- * `Kinetis\SearchOpenSearch\OpenSearchClientFactory::fromConfig()`
- * exposes via its `$transportDecorator` parameter:
+ * A client span per search HTTP call, wrapping any PSR-18
+ * `ClientInterface` — meant for the seam every engine factory in this
+ * project exposes via its `$transportDecorator` parameter:
  *
- *     OpenSearchClientFactory::fromConfig(
+ *     ElasticsearchClientFactory::fromConfig(
  *         $config,
  *         transportDecorator: static fn (ClientInterface $client): ClientInterface
- *             => new TracingOpenSearchTransport($client, $tracerProvider),
+ *             => new TracingSearchTransport($client, $tracerProvider, SearchSystem::Elasticsearch),
  *     );
+ *
+ * OpenSearch and Elasticsearch answer the same path-based REST API, so
+ * one decorator serves both; $system is what tells their spans apart.
  *
  * Composed after the factory's own origin, deadline, response bound,
  * Content-Type, auth and TLS options are already applied, so this
@@ -37,21 +39,22 @@ use Throwable;
  * deferred-consumption span lifecycle to manage here — the span starts
  * and ends around one call, and a body-phase failure falls inside it.
  *
- * OpenSearch's REST API is path-based (`POST /{index}/_search`,
- * `GET /{index}/_doc/{id}`, ...), so a span is named from the request's
- * method and the action its path performs — legible without parsing the
- * request body's query DSL. Both come from {@see Redaction}'s closed
- * vocabularies: the rest of such a path is index names, aliases and
- * document ids, which identify the records a request touched rather
- * than what it did, so the path travels only as a fingerprint.
+ * A span is named from the request's method and the action its path
+ * performs (`POST /{index}/_search`, `GET /{index}/_doc/{id}`, ...) —
+ * legible without parsing the request body's query DSL. Both come from
+ * {@see Redaction}'s closed vocabularies: the rest of such a path is
+ * index names, aliases and document ids, which identify the records a
+ * request touched rather than what it did, so the path travels only as
+ * a fingerprint.
  */
-final readonly class TracingOpenSearchTransport implements ClientInterface
+final readonly class TracingSearchTransport implements ClientInterface
 {
     private TracerInterface $tracer;
 
     public function __construct(
         private ClientInterface $inner,
         TracerProviderInterface $tracerProvider,
+        private SearchSystem $system,
     ) {
         $this->tracer = $tracerProvider->getTracer('kinetis');
     }
@@ -64,7 +67,7 @@ final readonly class TracingOpenSearchTransport implements ClientInterface
 
         $span = $this->tracer->spanBuilder(Redaction::httpSpanName($request->getMethod()) . ' ' . $action)
             ->setSpanKind(SpanKind::KIND_CLIENT)
-            ->setAttribute('db.system.name', 'opensearch')
+            ->setAttribute('db.system.name', $this->system->value)
             ->setAttribute('db.operation.name', $action)
             ->setAttribute('http.request.method', Redaction::httpMethod($request->getMethod()))
             ->setAttribute(

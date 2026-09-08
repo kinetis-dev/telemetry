@@ -89,8 +89,8 @@ trace root.
   any [`kinetis/session`](https://github.com/kinetis-dev/session) `SessionStoreInterface`. The session id never
   travels verbatim (it's a bearer credential) — only its fingerprint
   does.
-- `TracingOpenSearchTransport` — a span per OpenSearch call, wrapping
-  the PSR-18 client via `OpenSearchClientFactory::fromConfig()`'s
+- `TracingSearchTransport` — a span per search call on either engine,
+  wrapping the PSR-18 client via each engine factory's
   `transportDecorator` parameter.
 - `TraceAwareLogger` — wraps any PSR-3 logger, adding the active span's
   `trace_id`/`span_id` to every entry's context.
@@ -105,7 +105,7 @@ carried. Every decorator and hook routes an operation's inputs through
 one internal policy point, and there is no setting that turns it off.
 
 A SQL statement and its parameters, a cache key and its value, a URL's
-userinfo/path/query/fragment, an incoming request's path, an OpenSearch
+userinfo/path/query/fragment, an incoming request's path, a search
 index name or document id, a session id and its payload, and a
 failure's message and stack trace all stay behind. What travels in
 their place is an unkeyed 128-bit SHA-256 fingerprint — enough for a

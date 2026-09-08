@@ -1,6 +1,6 @@
 {
     "name": "kinetis/telemetry",
-    "description": "OpenTelemetry tracing for Kinetis — request spans, framework instrumentation hooks, decorators for the cache, session, HTTP and OpenSearch boundaries, and OTLP export over the Revolt-backed client.",
+    "description": "OpenTelemetry tracing for Kinetis — request spans, framework instrumentation hooks, decorators for the cache, session, HTTP and search boundaries, and OTLP export over the Revolt-backed client.",
     "type": "library",
     "license": "MIT",
     "authors": [
@@ -24,7 +24,6 @@
         "kinetis/cache-redis": "dev-main",
         "kinetis/persistence": "dev-main",
         "kinetis/redis": "dev-main",
-        "kinetis/search-opensearch": "dev-main",
         "kinetis/session": "dev-main",
         "phpstan/phpstan": "^2.2.8",
         "phpunit/phpunit": "^12.5.33",
@@ -35,7 +34,7 @@
         "kinetis/queue": "Producer and consumer job spans, reported by the queue backends and the worker through the framework's instrumentation hooks.",
         "kinetis/cache-redis": "Enables the TracingSimpleCache decorator — a span per cache operation.",
         "kinetis/session": "Enables the TracingSessionStore decorator — a span per session read, create, update and destroy.",
-        "kinetis/search-opensearch": "Enables the TracingOpenSearchTransport decorator, via OpenSearchClientFactory's transportDecorator seam — a span per OpenSearch call."
+        "kinetis/search": "Gives TracingSearchTransport the transportDecorator seam each engine factory exposes — a span per search call, on OpenSearch or Elasticsearch."
     },
     "autoload": {
         "psr-4": {
@@ -69,10 +68,6 @@
         {
             "type": "path",
             "url": "../session"
-        },
-        {
-            "type": "path",
-            "url": "../search-opensearch"
         },
         {
             "type": "path",

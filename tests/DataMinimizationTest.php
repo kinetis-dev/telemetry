@@ -10,7 +10,8 @@ use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use Kinetis\Telemetry\Middleware\RequestSpanMiddleware;
 use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Redaction;
-use Kinetis\Telemetry\Search\TracingOpenSearchTransport;
+use Kinetis\Telemetry\Search\SearchSystem;
+use Kinetis\Telemetry\Search\TracingSearchTransport;
 use Kinetis\Telemetry\SimpleCache\TracingSimpleCache;
 use Kinetis\Telemetry\Tests\Fixtures\FakePsr18Client;
 use Kinetis\Telemetry\Tests\Fixtures\FakeSimpleCache;
@@ -204,17 +205,17 @@ final class DataMinimizationTest extends TracingTestCase
     }
 
     /**
-     * An OpenSearch path is index names and document ids around one
+     * A search path is index names and document ids around one
      * action segment, so only the action names the span. The index and
      * the id are the record the request addressed, which is the half a
      * trace never carries.
      */
-    public function test_an_opensearch_path_exports_neither_its_index_nor_its_document_id(): void
+    public function test_a_search_path_exports_neither_its_index_nor_its_document_id(): void
     {
         $inner = new FakePsr18Client();
         $request = new Request('GET', 'http://localhost:9200/' . self::SECRET_INDEX . '/_doc/' . self::SECRET_DOCUMENT_ID);
 
-        new TracingOpenSearchTransport($inner, $this->tracerProvider)->sendRequest($request);
+        new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch)->sendRequest($request);
 
         self::assertSame($request, $inner->lastRequest);
 
@@ -230,11 +231,11 @@ final class DataMinimizationTest extends TracingTestCase
      * the span rather than the last segment, which would be the
      * document id itself.
      */
-    public function test_an_opensearch_path_naming_no_action_exports_no_segment_of_it(): void
+    public function test_a_search_path_naming_no_action_exports_no_segment_of_it(): void
     {
         $inner = new FakePsr18Client();
 
-        new TracingOpenSearchTransport($inner, $this->tracerProvider)
+        new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch)
             ->sendRequest(new Request('PUT', 'http://localhost:9200/' . self::SECRET_INDEX . '/' . self::SECRET_DOCUMENT_ID));
 
         self::assertSame('PUT request', $this->span()->getName());

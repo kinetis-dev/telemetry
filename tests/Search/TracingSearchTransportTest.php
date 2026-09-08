@@ -6,7 +6,8 @@ namespace Kinetis\Telemetry\Tests\Search;
 
 use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Redaction;
-use Kinetis\Telemetry\Search\TracingOpenSearchTransport;
+use Kinetis\Telemetry\Search\SearchSystem;
+use Kinetis\Telemetry\Search\TracingSearchTransport;
 use Kinetis\Telemetry\Tests\Fixtures\FakePsr18Client;
 use Kinetis\Telemetry\Tests\TracingTestCase;
 use Nyholm\Psr7\Request;
@@ -14,12 +15,12 @@ use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use RuntimeException;
 
-final class TracingOpenSearchTransportTest extends TracingTestCase
+final class TracingSearchTransportTest extends TracingTestCase
 {
     public function test_a_search_request_produces_a_client_span_naming_the_action(): void
     {
         $inner = new FakePsr18Client();
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $transport->sendRequest(new Request('POST', 'http://localhost:9200/orders/_search'));
 
@@ -36,10 +37,18 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
         self::assertSame(200, $span->getAttributes()->get('http.response.status_code'));
     }
 
+    public function test_the_engine_the_span_reports_is_the_one_it_was_given(): void
+    {
+        new TracingSearchTransport(new FakePsr18Client(), $this->tracerProvider, SearchSystem::Elasticsearch)
+            ->sendRequest(new Request('POST', 'http://localhost:9200/orders/_search'));
+
+        self::assertSame('elasticsearch', $this->span()->getAttributes()->get('db.system.name'));
+    }
+
     public function test_a_document_get_names_the_doc_action_not_the_id(): void
     {
         $inner = new FakePsr18Client();
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $transport->sendRequest(new Request('GET', 'http://localhost:9200/orders/_doc/42'));
 
@@ -55,7 +64,7 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
     public function test_a_request_with_no_action_segment_falls_back_to_a_fixed_name(): void
     {
         $inner = new FakePsr18Client();
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $transport->sendRequest(new Request('PUT', 'http://localhost:9200/orders'));
 
@@ -72,7 +81,7 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
     public function test_an_unknown_underscore_segment_takes_the_fallback_rather_than_naming_the_span(): void
     {
         $inner = new FakePsr18Client();
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $transport->sendRequest(new Request('GET', 'http://localhost:9200/orders/_not_an_action'));
 
@@ -82,7 +91,7 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
     public function test_an_error_status_marks_the_span_as_an_error_without_throwing(): void
     {
         $inner = new FakePsr18Client(status: 404);
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $response = $transport->sendRequest(new Request('GET', 'http://localhost:9200/orders/_doc/missing'));
 
@@ -93,7 +102,7 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
     public function test_a_transport_failure_marks_the_span_as_an_error_and_rethrows(): void
     {
         $inner = new FakePsr18Client(failWith: 'connection refused');
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         try {
             $transport->sendRequest(new Request('POST', 'http://localhost:9200/orders/_search'));
@@ -107,7 +116,7 @@ final class TracingOpenSearchTransportTest extends TracingTestCase
     public function test_the_wrapped_client_actually_receives_the_request(): void
     {
         $inner = new FakePsr18Client();
-        $transport = new TracingOpenSearchTransport($inner, $this->tracerProvider);
+        $transport = new TracingSearchTransport($inner, $this->tracerProvider, SearchSystem::OpenSearch);
 
         $request = new Request('POST', 'http://localhost:9200/orders/_search');
         $transport->sendRequest($request);
