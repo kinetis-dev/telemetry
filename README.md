@@ -102,32 +102,20 @@ readable by everyone with access to it — a wider audience than the
 database, cache, or upstream service an operation's input was addressed
 to. So a span here describes an operation and never the data it
 carried. Every decorator and hook routes an operation's inputs through
-one internal policy point, and there is no setting that turns it off:
+one internal policy point, and there is no setting that turns it off.
 
-| Never exported | Exported instead |
-|---|---|
-| A SQL statement, its literal values, its bound parameters | The opening keyword from a fixed vocabulary, and a fingerprint of the statement |
-| A cache key, single or batched, and every cached value | A fingerprint of the operation's key list, and `db.operation.batch.size` for the multi-key methods |
-| A URL's userinfo, path, query string, and fragment | `url.scheme`, `server.address`, `server.port`, and a fingerprint of the whole URL |
-| An incoming request's path or query string | The method, and the router's own template as `http.route` on the `route.match` span |
-| An OpenSearch index name, document id or alias | The action from a fixed vocabulary, and a fingerprint of the path |
-| A session id, and the session payload | A fingerprint of the id |
-| A failure's message and stack trace | The exception's type — an anonymous subclass reports its nearest named ancestor — as the span status and as an `exception` event's `exception.type` |
+A SQL statement and its parameters, a cache key and its value, a URL's
+userinfo/path/query/fragment, an incoming request's path, an OpenSearch
+index name or document id, a session id and its payload, and a
+failure's message and stack trace all stay behind. What travels in
+their place is an unkeyed 128-bit SHA-256 fingerprint — enough for a
+backend to group two spans over the same value, never the value — plus
+the operation's own name drawn from a closed vocabulary. A failing
+operation's exception propagates unchanged, so an application that
+wants the message logs it where its own redaction policy applies, and
+`TraceAwareLogger` puts the trace id on that log line.
 
-A fingerprint is a 128-bit SHA-256 prefix: two spans covering the same
-statement, key list, URL or path carry the same one, so a backend still
-groups them, and neither carries the value. Each digest covers the kind
-of input as well as the input, so one byte sequence seen as a cache key
-and as a URL fingerprints differently in each. It is pseudonymous
-correlation data, not a secret — the digest is unkeyed, so a value
-drawn from an enumerable set stays guessable to anyone who can hash
-candidates. A failing operation's exception propagates unchanged, so an
-application that wants the message logs it where its own redaction
-policy applies — `TraceAwareLogger` puts the trace id on that log line,
-which joins the two back together.
-
-Span names and the attributes that say what an operation did come from
-closed vocabularies for the same reason — the rule, and what each
+The full table of what is dropped and what replaces it, and what each
 vocabulary falls back to, is stated once at
 [kinetis.dev/docs/telemetry.html](https://kinetis.dev/docs/telemetry.html#what-never-reaches-a-span).
 
