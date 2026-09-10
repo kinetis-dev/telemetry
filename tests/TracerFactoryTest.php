@@ -6,7 +6,9 @@ namespace Kinetis\Telemetry\Tests;
 
 use Kinetis\Config\Config;
 use Kinetis\Telemetry\TracerFactory;
+use OpenTelemetry\SDK\Trace\TracerProvider;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpClient\AmpHttpClient;
 
 final class TracerFactoryTest extends TestCase
 {
@@ -58,15 +60,29 @@ final class TracerFactoryTest extends TestCase
         ]));
         self::assertNotNull($provider);
 
-        // Down the real chain: provider -> shared state -> processor ->
-        // exporter -> transport, whose headers are what actually go out.
-        $state = new \ReflectionProperty($provider, 'tracerSharedState')->getValue($provider);
-        $processor = new \ReflectionMethod($state, 'getSpanProcessor')->invoke($state);
-        $exporter = new \ReflectionProperty($processor, 'exporter')->getValue($processor);
-        $transport = new \ReflectionProperty($exporter, 'transport')->getValue($exporter);
+        $transport = self::transportOf($provider);
         $sent = new \ReflectionProperty($transport, 'headers')->getValue($transport);
 
         self::assertSame('secret-key', $sent['x-honeycomb-team'] ?? null);
+    }
+
+    public function test_the_otlp_transport_never_follows_a_redirect(): void
+    {
+        $provider = TracerFactory::fromConfig(new Config([
+            'OTEL_EXPORTER_OTLP_ENDPOINT' => 'http://collector.test:4318',
+        ]));
+        self::assertNotNull($provider);
+
+        // Transport -> Psr18Client -> AmpHttpClient, whose default options
+        // are validated and merged when it is constructed.
+        $transport = self::transportOf($provider);
+        $psr18 = new \ReflectionProperty($transport, 'client')->getValue($transport);
+        $client = new \ReflectionProperty($psr18, 'client')->getValue($psr18);
+        self::assertInstanceOf(AmpHttpClient::class, $client);
+
+        $options = new \ReflectionProperty($client, 'defaultOptions')->getValue($client);
+
+        self::assertSame(0, $options['max_redirects'] ?? null);
     }
 
     public function test_no_headers_configured_means_none_added(): void
@@ -142,5 +158,18 @@ final class TracerFactoryTest extends TestCase
             'OTEL_TRACES_SAMPLER' => 'traceidratio',
             'OTEL_TRACES_SAMPLER_ARG' => '1.5',
         ]));
+    }
+
+    /**
+     * Down the real chain: provider -> shared state -> processor ->
+     * exporter -> transport, which is what actually sends a batch.
+     */
+    private static function transportOf(TracerProvider $provider): object
+    {
+        $state = new \ReflectionProperty($provider, 'tracerSharedState')->getValue($provider);
+        $processor = new \ReflectionMethod($state, 'getSpanProcessor')->invoke($state);
+        $exporter = new \ReflectionProperty($processor, 'exporter')->getValue($processor);
+
+        return new \ReflectionProperty($exporter, 'transport')->getValue($exporter);
     }
 }

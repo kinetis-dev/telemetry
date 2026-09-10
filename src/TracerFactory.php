@@ -28,9 +28,10 @@ use Symfony\Component\HttpClient\Psr18Client;
 /**
  * Builds the OTLP-exporting tracer provider from configuration.
  *
- * Export goes over kinetis/revolt-http-client's Fiber-suspending
- * transport, so flushing a span batch never blocks the worker the way a
- * curl-based exporter would. Spans batch in memory and export when the
+ * Each export request goes over kinetis/revolt-http-client's
+ * Fiber-suspending transport. OpenTelemetry's PsrTransport waits between
+ * retries with time_nanosleep(), which blocks the worker for each backoff
+ * or Retry-After delay. Spans batch in memory and export when the
  * batch fills or on shutdown — `register_shutdown_function` runs at
  * request end under boot-and-die runtimes and at worker exit under a
  * persistent one, so both shapes flush without configuration.
@@ -50,8 +51,10 @@ final class TracerFactory
         }
 
         $psr17 = new Psr17Factory();
+        // A batch and its headers go only to the configured endpoint: a
+        // collector redirect is never followed.
         $transport = new PsrTransportFactory(
-            new Psr18Client(AmpHttpClientFactory::create()),
+            new Psr18Client(AmpHttpClientFactory::create(['max_redirects' => 0])),
             $psr17,
             $psr17,
         )->create(
