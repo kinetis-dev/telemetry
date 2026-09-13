@@ -26,8 +26,8 @@
         "kinetis/redis": "dev-main",
         "kinetis/session": "dev-main",
         "phpstan/phpstan": "^2.2.8",
-        "phpunit/phpunit": "^12.5.33",
-        "vimeo/psalm": "^6.16.1"
+        "phpunit/phpunit": "^13.3.3",
+        "vimeo/psalm": "^6.17"
     },
     "suggest": {
         "kinetis/persistence": "Query and transaction spans, reported from inside the drivers through the framework's instrumentation hooks.",
