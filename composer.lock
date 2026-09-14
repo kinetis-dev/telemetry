@@ -5070,35 +5070,28 @@
             "dist": {
                 "type": "path",
                 "url": "../persistence",
-                "reference": "39f4af7be651d5df70eaa010c3abfcae795750d9"
+                "reference": "4d6c00dfc5258293b4dc5deadb2fde4325335eca"
             },
             "require": {
-                "kinetis/framework": "dev-main",
                 "php": "^8.4",
+                "psr/log": "^3.0.2",
                 "revolt/event-loop": "^1.0.9"
             },
             "require-dev": {
                 "infection/infection": "^0.35.0",
-                "kinetis/mcp": "dev-main",
-                "kinetis/queue": "dev-main",
-                "nyholm/psr7": "^1.8.2",
+                "kinetis/framework": "dev-main",
                 "phpstan/phpstan": "^2.2.8",
                 "phpunit/phpunit": "^13.3.3",
                 "vimeo/psalm": "^6.17"
             },
             "suggest": {
-                "ext-mysqli": "Needed by the native MySQL driver (Kinetis\\Persistence\\Driver\\MysqliAsyncClient) — the default under FrankenPHP worker mode via DB_DRIVER=auto.",
-                "ext-pdo_mysql": "Needed by the PDO MySQL driver (Kinetis\\Persistence\\Driver\\PdoMysqlClient) — the default under PHP-FPM via DB_DRIVER=auto.",
-                "ext-pdo_pgsql": "Needed by the PDO Postgres driver (Kinetis\\Persistence\\Driver\\PdoPgsqlClient) — the default under PHP-FPM via DB_DRIVER=auto.",
-                "ext-pgsql": "Needed by the native Postgres driver (Kinetis\\Persistence\\Driver\\PgsqlAsyncClient) — the default under FrankenPHP worker mode via DB_DRIVER=auto.",
+                "ext-mysqli": "Needed by the native MySQL driver (Kinetis\\Persistence\\Driver\\MysqliAsyncClient) — the auto driver's choice under FrankenPHP worker mode and RoadRunner.",
+                "ext-pdo_mysql": "Needed by the PDO MySQL driver (Kinetis\\Persistence\\Driver\\PdoMysqlClient) — the auto driver's choice everywhere else, PHP-FPM included.",
+                "ext-pdo_pgsql": "Needed by the PDO Postgres driver (Kinetis\\Persistence\\Driver\\PdoPgsqlClient) — the auto driver's choice everywhere else, PHP-FPM included.",
+                "ext-pgsql": "Needed by the native Postgres driver (Kinetis\\Persistence\\Driver\\PgsqlAsyncClient) — the auto driver's choice under FrankenPHP worker mode and RoadRunner.",
                 "ext-sockets": "Needed alongside ext-pgsql by the native Postgres driver (Kinetis\\Persistence\\Driver\\PgsqlAsyncClient), which ends a connection's transport with socket_shutdown() to abandon a statement without blocking the event loop."
             },
             "type": "library",
-            "extra": {
-                "kinetis": {
-                    "bootstrap": "Kinetis\\Persistence\\PackageBootstrap"
-                }
-            },
             "autoload": {
                 "psr-4": {
                     "Kinetis\\Persistence\\": "src/"
@@ -5117,7 +5110,7 @@
                     "name": "Alon Noy"
                 }
             ],
-            "description": "Request-scoped SQL transaction safety net, runtime-matched native DB drivers (mysqli async, ext-pgsql async, PDO), and the connection factory for Kinetis — MySQL and Postgres.",
+            "description": "Runtime-matched MySQL and Postgres clients (mysqli async, ext-pgsql async, PDO) built from a neutral connection definition, with a transaction safety net and injectable SQL instrumentation. Usable standalone; kinetis/database-bridge wires it into Kinetis.",
             "transport-options": {
                 "relative": true
             }
@@ -5177,7 +5170,7 @@
             "dist": {
                 "type": "path",
                 "url": "../session",
-                "reference": "57198075c3b64f62346ca5d1e518dca8096471b1"
+                "reference": "638a218eeb9d1552269d2d40532b055bba093a88"
             },
             "require": {
                 "kinetis/framework": "dev-main",
@@ -5197,6 +5190,7 @@
             },
             "suggest": {
                 "kinetis/cache-redis": "Enables RedisSessionStore, the SESSION_DRIVER=redis backend, cluster and TLS included.",
+                "kinetis/database-bridge": "Binds the DB_CONNECTION link SESSION_DRIVER=sql stores sessions through.",
                 "kinetis/persistence": "Enables SqlSessionStore, sessions in a kinetis_sessions table over the SQL contracts."
             },
             "type": "library",

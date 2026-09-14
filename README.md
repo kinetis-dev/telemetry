@@ -57,8 +57,10 @@ Installing this package auto-registers, via `extra.kinetis`:
   wiring: boot phases, per-middleware timing, route match, hydration,
   controller, `concurrently()` tasks, events, MCP calls, and — this is
   the whole of Kinetis-owned SQL and queue tracing, with nothing to
-  wrap by hand — a span per query split at the pool boundary, a
-  transaction span carrying its outcome, and producer and consumer job
+  wrap by hand — for every SQL client
+  [`kinetis/database-bridge`](https://github.com/kinetis-dev/database-bridge)
+  builds, a span per query split at the pool boundary and a transaction
+  span carrying its outcome, plus producer and consumer job
   spans joined into one trace across processes by a `traceparent` the
   push hook stores with the job.
 
