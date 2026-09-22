@@ -29,15 +29,25 @@ use Symfony\Component\HttpClient\Psr18Client;
  * Builds the OTLP-exporting tracer provider from configuration.
  *
  * Each export request goes over kinetis/revolt-http-client's
- * Fiber-suspending transport. OpenTelemetry's PsrTransport waits between
- * retries with time_nanosleep(), which blocks the worker for each backoff
- * or Retry-After delay. Spans batch in memory and export when the
+ * Fiber-suspending transport under a finite budget, so a collector that
+ * accepts a request and never answers it cannot hold the exporting
+ * request open indefinitely. Spans batch in memory and export when the
  * batch fills or on shutdown — `register_shutdown_function` runs at
  * request end under boot-and-die runtimes and at worker exit under a
  * persistent one, so both shapes flush without configuration.
  */
 final class TracerFactory
 {
+    /**
+     * The export budget. On the Amp client this bounds the TCP connect
+     * and TLS handshake (`timeout`) and, separately, the transfer
+     * (`max_duration`), so a stalled collector can cost up to twice it
+     * rather than one strict total. It is not configurable: the export
+     * runs inline inside the `end()` call that triggers it, and this is
+     * the bounded cost that request pays.
+     */
+    private const float EXPORT_TIMEOUT_SECONDS = 10.0;
+
     /**
      * Null when `OTEL_EXPORTER_OTLP_ENDPOINT` isn't set — telemetry is
      * opt-in per environment, not merely per install.
@@ -52,15 +62,24 @@ final class TracerFactory
 
         $psr17 = new Psr17Factory();
         // A batch and its headers go only to the configured endpoint: a
-        // collector redirect is never followed.
+        // collector redirect is never followed. One export is one wire
+        // attempt — a timed-out POST may already have been stored by the
+        // collector, so replaying it is never safe, and the SDK logs the
+        // failure and drops the batch instead.
         $transport = new PsrTransportFactory(
-            new Psr18Client(AmpHttpClientFactory::create(['max_redirects' => 0])),
+            new Psr18Client(AmpHttpClientFactory::create([
+                'max_redirects' => 0,
+                'timeout' => self::EXPORT_TIMEOUT_SECONDS,
+                'max_duration' => self::EXPORT_TIMEOUT_SECONDS,
+            ])),
             $psr17,
             $psr17,
         )->create(
             rtrim($endpoint, '/') . '/v1/traces',
             ContentTypes::PROTOBUF,
             self::headersFromConfig($config),
+            timeout: self::EXPORT_TIMEOUT_SECONDS,
+            maxRetries: 0,
         );
 
         $resource = ResourceInfoFactory::defaultResource()->merge(ResourceInfo::create(Attributes::create([

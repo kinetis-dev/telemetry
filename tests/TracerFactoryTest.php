@@ -66,7 +66,7 @@ final class TracerFactoryTest extends TestCase
         self::assertSame('secret-key', $sent['x-honeycomb-team'] ?? null);
     }
 
-    public function test_the_otlp_transport_never_follows_a_redirect(): void
+    public function test_one_export_is_one_bounded_wire_attempt(): void
     {
         $provider = TracerFactory::fromConfig(new Config([
             'OTEL_EXPORTER_OTLP_ENDPOINT' => 'http://collector.test:4318',
@@ -74,7 +74,9 @@ final class TracerFactoryTest extends TestCase
         self::assertNotNull($provider);
 
         // Transport -> Psr18Client -> AmpHttpClient, whose default options
-        // are validated and merged when it is constructed.
+        // are validated and merged when it is constructed. `timeout` and
+        // `max_duration` must arrive as floats: the Amp adapter hands them
+        // straight to the connect and transfer deadlines.
         $transport = self::transportOf($provider);
         $psr18 = new \ReflectionProperty($transport, 'client')->getValue($transport);
         $client = new \ReflectionProperty($psr18, 'client')->getValue($psr18);
@@ -83,6 +85,13 @@ final class TracerFactoryTest extends TestCase
         $options = new \ReflectionProperty($client, 'defaultOptions')->getValue($client);
 
         self::assertSame(0, $options['max_redirects'] ?? null);
+        self::assertSame(10.0, $options['timeout'] ?? null);
+        self::assertSame(10.0, $options['max_duration'] ?? null);
+
+        // The SDK's own retry loop is what would replay a POST whose
+        // acknowledgement is unknown; zero attempts past the first is the
+        // only setting that cannot.
+        self::assertSame(0, new \ReflectionProperty($transport, 'maxRetries')->getValue($transport));
     }
 
     public function test_no_headers_configured_means_none_added(): void

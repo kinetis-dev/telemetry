@@ -24,9 +24,10 @@ API-first applications, developed in the
 
 A span per request, per SQL query, per queue job, and per outgoing
 HTTP call, exported over OTLP to any tracing backend. Each export
-request goes through [`kinetis/revolt-http-client`](https://github.com/kinetis-dev/revolt-http-client)'s Fiber-suspending transport;
-the exporter waits between retries with a blocking sleep, which blocks
-the worker for each delay.
+request goes through [`kinetis/revolt-http-client`](https://github.com/kinetis-dev/revolt-http-client)'s Fiber-suspending transport
+as one wire attempt under a bounded budget — ten seconds to reach the
+collector, ten more to exchange the batch — so a collector that never
+answers cannot hold the exporting request open indefinitely.
 
 The distinctive trace this produces: spans that *overlap in time*. A
 request running two queries and an HTTP call through `concurrently()`
@@ -132,9 +133,9 @@ vocabulary falls back to, is stated once at
 | `OTEL_TRACES_SAMPLER` | `parentbased_always_on` | Standard sampler names; `traceidratio` + `OTEL_TRACES_SAMPLER_ARG` for a rate. |
 | `OTEL_TRACES_SAMPLER_ARG` | `1.0` | Ratio for the `traceidratio` samplers, `0`–`1`. |
 
-Export never follows a redirect: the exporter retries a redirect
-response against the configured endpoint up to its retry limit, then
-reports an export failure — see
+Export never follows a redirect and never retries. A redirect, an error
+response, or a spent budget is one logged export failure, and the batch
+is dropped rather than resent: the collector may already hold it — see
 [kinetis.dev/docs/telemetry.html](https://kinetis.dev/docs/telemetry.html#configuration).
 
 ## Installation
