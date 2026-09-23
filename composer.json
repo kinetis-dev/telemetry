@@ -48,7 +48,6 @@
     },
     "extra": {
         "kinetis": {
-            "scan": "Kinetis\\Telemetry\\Middleware\\",
             "bootstrap": "Kinetis\\Telemetry\\PackageBootstrap"
         }
     },

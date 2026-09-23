@@ -44,9 +44,6 @@ OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4318
 
 Installing this package auto-registers, via `extra.kinetis`:
 
-- **Global middleware** `RequestSpanMiddleware` — one server span per
-  request (method, status, `php.memory.usage`; an incoming `traceparent`
-  joins the caller's trace).
 - **A container binding** for
   `OpenTelemetry\API\Trace\TracerProviderInterface` — the OTLP-exporting
   provider when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, a no-op provider
@@ -55,8 +52,10 @@ Installing this package auto-registers, via `extra.kinetis`:
   endpoint is set, the bootstrap swaps an OTel backend into core's
   `Kinetis\Instrumentation\Telemetry` holder, so the spans the
   framework reports from inside itself start exporting with no further
-  wiring: boot phases, per-middleware timing, route match, hydration,
-  controller, `concurrently()` tasks, events, MCP calls, and — this is
+  wiring: one server span per request around every global middleware
+  (method, status, `php.memory.usage`; an incoming `traceparent` joins
+  the caller's trace), boot phases, per-middleware timing, route match,
+  hydration, controller, `concurrently()` tasks, events, MCP calls, and — this is
   the whole of Kinetis-owned SQL and queue tracing, with nothing to
   wrap by hand — for every SQL client
   [`kinetis/database-bridge`](https://github.com/kinetis-dev/database-bridge)

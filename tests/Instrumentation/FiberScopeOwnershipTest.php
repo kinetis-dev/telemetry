@@ -10,15 +10,11 @@ use Kinetis\Async\Timer;
 use Kinetis\Instrumentation\NullTelemetry;
 use Kinetis\Instrumentation\Telemetry;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
-use Kinetis\Telemetry\Middleware\RequestSpanMiddleware;
 use Kinetis\Telemetry\Tests\TracingTestCase;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use OpenTelemetry\Context\Context;
 use OpenTelemetry\SDK\Trace\ImmutableSpan;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 
 use function Kinetis\Async\concurrently;
@@ -120,17 +116,12 @@ final class FiberScopeOwnershipTest extends TracingTestCase
     {
         $traceId = '0af7651916cd43dd8448eb211c80319c';
         $callerSpanId = 'b7ad6b7169203331';
-        $middleware = new RequestSpanMiddleware($this->tracerProvider);
-        $handler = self::handlerReturning(new Response(200));
 
-        self::runInFiber(static function () use ($middleware, $handler, $traceId, $callerSpanId): void {
-            $middleware->process(
-                new ServerRequest('GET', 'https://app.test/', ['Traceparent' => "00-{$traceId}-{$callerSpanId}-01"]),
-                $handler,
-            );
+        self::runInFiber(static function () use ($traceId, $callerSpanId): void {
+            self::handleRequest(new ServerRequest('GET', 'https://app.test/', ['Traceparent' => "00-{$traceId}-{$callerSpanId}-01"]));
         });
-        self::runInFiber(static function () use ($middleware, $handler): void {
-            $middleware->process(new ServerRequest('POST', 'https://app.test/'), $handler);
+        self::runInFiber(static function (): void {
+            self::handleRequest(new ServerRequest('POST', 'https://app.test/'));
         });
 
         [$propagated, $rooted] = $this->spans();
@@ -195,16 +186,9 @@ final class FiberScopeOwnershipTest extends TracingTestCase
         new Fiber($body)->start();
     }
 
-    private static function handlerReturning(ResponseInterface $response): RequestHandlerInterface
+    private static function handleRequest(ServerRequest $request): void
     {
-        return new class($response) implements RequestHandlerInterface {
-            public function __construct(private readonly ResponseInterface $response) {}
-
-            #[\Override]
-            public function handle(ServerRequestInterface $request): ResponseInterface
-            {
-                return $this->response;
-            }
-        };
+        $telemetry = Telemetry::global();
+        $telemetry->requestEnded($telemetry->requestStarted($request), new Response(200));
     }
 }

@@ -8,6 +8,8 @@ use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
 use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Tests\TracingTestCase;
+use Nyholm\Psr7\Response;
+use Nyholm\Psr7\ServerRequest;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
 use RuntimeException;
@@ -31,6 +33,32 @@ final class OtelTelemetryTest extends TracingTestCase
         self::assertSame('bootstrap.discovery', $span->getName());
         self::assertSame(100_000_000_000, $span->getStartEpochNanos());
         self::assertSame(100_250_000_000, $span->getEndEpochNanos());
+    }
+
+    public function test_a_request_becomes_a_server_span_with_the_method_and_status(): void
+    {
+        $token = $this->telemetry->requestStarted(new ServerRequest('GET', 'https://app.test/orders/42'));
+        $this->telemetry->requestEnded($token, new Response(200));
+
+        $span = $this->span();
+        self::assertSame('GET', $span->getName());
+        self::assertSame(SpanKind::KIND_SERVER, $span->getKind());
+        self::assertSame('GET', $span->getAttributes()->get('http.request.method'));
+        self::assertSame(200, $span->getAttributes()->get('http.response.status_code'));
+        self::assertIsInt($span->getAttributes()->get('php.memory.usage'));
+        self::assertSame(StatusCode::STATUS_UNSET, $span->getStatus()->getCode());
+    }
+
+    public function test_a_failure_escaping_the_request_is_recorded_on_its_span(): void
+    {
+        $token = $this->telemetry->requestStarted(new ServerRequest('GET', 'https://app.test/'));
+        $this->telemetry->requestEnded($token, new RuntimeException('pipeline exploded'));
+
+        $span = $this->span();
+        self::assertSame(StatusCode::STATUS_ERROR, $span->getStatus()->getCode());
+        self::assertSame(RuntimeException::class, $span->getStatus()->getDescription());
+        self::assertNull($span->getAttributes()->get('http.response.status_code'));
+        self::assertIsInt($span->getAttributes()->get('php.memory.usage'));
     }
 
     public function test_a_query_span_is_named_by_keyword_and_marks_the_server_start(): void

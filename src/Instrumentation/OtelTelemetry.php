@@ -10,11 +10,14 @@ use Kinetis\Telemetry\Redaction;
 use OpenTelemetry\API\Trace\Propagation\TraceContextPropagator;
 use OpenTelemetry\API\Trace\SpanInterface;
 use OpenTelemetry\API\Trace\SpanKind;
+use OpenTelemetry\API\Trace\StatusCode;
 use OpenTelemetry\API\Trace\TracerInterface;
 use OpenTelemetry\API\Trace\TracerProviderInterface;
 use OpenTelemetry\Context\Context;
 use OpenTelemetry\Context\ContextInterface;
 use OpenTelemetry\Context\ScopeInterface;
+use Psr\Http\Message\ResponseInterface;
+use Psr\Http\Message\ServerRequestInterface;
 use Throwable;
 
 /**
@@ -31,13 +34,13 @@ use Throwable;
  * starts next) is the load-bearing choice. The nested, same-Fiber pairs
  * activate on whatever context their Fiber already carries: middleware,
  * controller, event/listener, the concurrently() batch, and MCP tool
- * calls. `taskStarted()` and `jobStarted()` activate on a parent context
- * they build themselves — the batch span for a task, the propagated or
- * root context for a job — because each begins on a Fiber whose context
- * may be uninitialized, where reading the ambient context warns instead
- * of answering. Query spans never activate at all: they overlap within a
- * single Fiber, and activating them would interleave that Fiber's own
- * stack.
+ * calls. `requestStarted()`, `taskStarted()` and `jobStarted()` activate
+ * on a parent context they build themselves — the propagated or root
+ * context for a request or a job, the batch span for a task — because
+ * each begins on a Fiber whose context may be uninitialized, where
+ * reading the ambient context warns instead of answering. Query spans
+ * never activate at all: they overlap within a single Fiber, and
+ * activating them would interleave that Fiber's own stack.
  *
  * The hooks hand over the same operation inputs the decorators see, and
  * they reach a span under the same rules — {@see Redaction} states
@@ -64,6 +67,62 @@ final readonly class OtelTelemetry implements TelemetryInterface
             ->setStartTimestamp((int) ($startedAt * 1_000_000_000))
             ->startSpan()
             ->end((int) ($endedAt * 1_000_000_000));
+    }
+
+    /**
+     * The server span, enclosing the framework's complete global
+     * pipeline. It is activated for its duration, which parents every
+     * other span of the request under it — middleware, a query, a queue
+     * push, an outgoing HTTP call, and `concurrently()` tasks through
+     * their batch. An incoming `traceparent` header makes it a child of
+     * the caller's trace.
+     *
+     * No form of the request target travels on this span: a path
+     * carries user ids, email addresses, document ids and signed or
+     * single-use tokens as its segments. The matched route template
+     * surfaces on the `route.match` child as `http.route`.
+     */
+    #[\Override]
+    public function requestStarted(ServerRequestInterface $request): mixed
+    {
+        $method = $request->getMethod();
+
+        return $this->start(
+            Redaction::httpSpanName($method),
+            ['http.request.method' => Redaction::httpMethod($method)],
+            kind: SpanKind::KIND_SERVER,
+            activate: true,
+            parent: TraceContextPropagator::getInstance()->extract(
+                array_change_key_case($request->getHeaders()),
+                context: Context::getRoot(),
+            ),
+        );
+    }
+
+    /**
+     * Ends when the response leaves the global pipeline: a streamed
+     * body is emitted afterwards, outside this span.
+     */
+    #[\Override]
+    public function requestEnded(mixed $token, ResponseInterface|Throwable $outcome): void
+    {
+        $span = $this->spanOf($token);
+
+        if ($outcome instanceof ResponseInterface) {
+            $span?->setAttribute('http.response.status_code', $outcome->getStatusCode());
+
+            if ($outcome->getStatusCode() >= 500) {
+                $span?->setStatus(StatusCode::STATUS_ERROR);
+            }
+        }
+
+        // Per-request memory on the span, not a separate metrics
+        // pipeline: under a persistent worker, a slow upward drift of
+        // this attribute across a worker's own spans is the leak
+        // detector.
+        $span?->setAttribute('php.memory.usage', memory_get_usage(true));
+
+        $this->end($token, $outcome instanceof Throwable ? $outcome : null);
     }
 
     /**

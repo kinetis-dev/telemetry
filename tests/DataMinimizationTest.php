@@ -7,7 +7,6 @@ namespace Kinetis\Telemetry\Tests;
 use Kinetis\Persistence\Exception\QueryException;
 use Kinetis\Telemetry\HttpClient\TracingHttpClient;
 use Kinetis\Telemetry\Instrumentation\OtelTelemetry;
-use Kinetis\Telemetry\Middleware\RequestSpanMiddleware;
 use Kinetis\Telemetry\FingerprintDomain;
 use Kinetis\Telemetry\Redaction;
 use Kinetis\Telemetry\Search\SearchSystem;
@@ -20,14 +19,10 @@ use Nyholm\Psr7\Request;
 use Nyholm\Psr7\Response;
 use Nyholm\Psr7\ServerRequest;
 use OpenTelemetry\API\Trace\StatusCode;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\ServerRequestInterface;
-use Psr\Http\Server\RequestHandlerInterface;
 use RuntimeException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Contracts\HttpClient\Exception\TransportExceptionInterface;
-use Throwable;
 
 /**
  * Every value below is planted: it appears nowhere else in the package,
@@ -178,28 +173,15 @@ final class DataMinimizationTest extends TracingTestCase
     /**
      * An incoming path is written by whoever made the request, and the
      * segments an application routes on are the identifiers it is
-     * addressed by. The handler still receives the request untouched,
-     * so routing and the controller see the path they were sent.
+     * addressed by.
      */
     public function test_an_incoming_request_exports_no_form_of_its_path(): void
     {
-        $seenTarget = null;
-        $handler = new class($seenTarget) implements RequestHandlerInterface {
-            public function __construct(private ?string &$seenTarget) {}
+        $telemetry = new OtelTelemetry($this->tracerProvider);
 
-            #[\Override]
-            public function handle(ServerRequestInterface $request): ResponseInterface
-            {
-                $this->seenTarget = $request->getUri()->getPath();
+        $token = $telemetry->requestStarted(new ServerRequest('GET', 'https://app.test' . self::SECRET_REQUEST_PATH));
+        $telemetry->requestEnded($token, new Response(200));
 
-                return new Response(200);
-            }
-        };
-
-        new RequestSpanMiddleware($this->tracerProvider)
-            ->process(new ServerRequest('GET', 'https://app.test' . self::SECRET_REQUEST_PATH), $handler);
-
-        self::assertSame(self::SECRET_REQUEST_PATH, $seenTarget);
         self::assertSame('GET', $this->span()->getName());
         $this->assertNothingExported(self::SECRET_REQUEST_PATH, 'inv-L3AK-incoming-6b2f');
     }
@@ -361,26 +343,12 @@ final class DataMinimizationTest extends TracingTestCase
     public function test_an_anonymous_failure_exports_its_named_ancestor_and_nothing_of_its_declaration(): void
     {
         $failure = new class(self::SECRET_FAILURE_MESSAGE) extends RuntimeException {};
-        $handler = new class($failure) implements RequestHandlerInterface {
-            public function __construct(private readonly Throwable $failure) {}
-
-            #[\Override]
-            public function handle(ServerRequestInterface $request): ResponseInterface
-            {
-                throw $this->failure;
-            }
-        };
 
         // The premise: the class name itself is a source location.
         self::assertStringContainsString(__FILE__, $failure::class);
 
-        try {
-            new RequestSpanMiddleware($this->tracerProvider)
-                ->process(new ServerRequest('GET', 'https://app.test/'), $handler);
-            self::fail('Expected the handler failure to propagate.');
-        } catch (RuntimeException $e) {
-            self::assertSame($failure, $e);
-        }
+        $telemetry = new OtelTelemetry($this->tracerProvider);
+        $telemetry->requestEnded($telemetry->requestStarted(new ServerRequest('GET', 'https://app.test/')), $failure);
 
         $span = $this->span();
         self::assertSame(RuntimeException::class, $span->getStatus()->getDescription());

@@ -14,10 +14,10 @@ use OpenTelemetry\API\Trace\TracerProviderInterface;
 
 /**
  * Registers `TracerProviderInterface` on the application container —
- * the one binding every tracing component here resolves. With no
+ * the one binding every tracing decorator here resolves. With no
  * `OTEL_EXPORTER_OTLP_ENDPOINT` configured, a no-op provider is bound
- * instead, so the discovered middleware and any decorators cost near
- * nothing rather than failing to resolve.
+ * instead, so those decorators cost near nothing rather than failing to
+ * resolve.
  */
 final readonly class PackageBootstrap implements PackageBootstrapInterface
 {
