@@ -15,11 +15,16 @@ use Throwable;
 
 /**
  * A span per cache operation, wrapping any PSR-16 `CacheInterface` —
- * `kinetis/cache-redis`'s `RedisSimpleCache` included. Register it
- * around whatever the cache package's own bootstrap bound:
+ * `kinetis/cache-redis`'s `RedisSimpleCache` included. The application
+ * that binds the decorator built the inner cache, so it registers that
+ * cache's disposal too; the decorator disposes nothing:
+ *
+ *     $redis = RedisSimpleCache::fromConfig($config)
+ *         ?? throw new RuntimeException('No Redis cache connection is configured.');
+ *     $app->onDispose($redis->dispose(...));
  *
  *     $app->instance(CacheInterface::class, new TracingSimpleCache(
- *         RedisSimpleCache::fromConfig($config),
+ *         $redis,
  *         $app->get(TracerProviderInterface::class),
  *     ));
  *
