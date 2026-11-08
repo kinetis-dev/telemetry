@@ -13,6 +13,7 @@ use Kinetis\Telemetry\Tests\Fixtures\ThrowingHttpClient;
 use Kinetis\Telemetry\Tests\TracingTestCase;
 use OpenTelemetry\API\Trace\SpanKind;
 use OpenTelemetry\API\Trace\StatusCode;
+use OpenTelemetry\SDK\Trace\ImmutableSpan;
 use RuntimeException;
 use Symfony\Component\HttpClient\MockHttpClient;
 use Symfony\Component\HttpClient\Response\MockResponse;
@@ -63,7 +64,7 @@ final class TracingHttpClientTest extends TracingTestCase
 
         self::assertNotNull($traceparent, 'Expected a traceparent header on the outgoing request.');
         $span = $this->span();
-        self::assertSame("00-{$span->getTraceId()}-{$span->getSpanId()}-01", $traceparent);
+        self::assertSame(self::traceparentOf($span), $traceparent);
     }
 
     public function test_a_stale_traceparent_in_associative_form_is_replaced_not_duplicated(): void
@@ -75,7 +76,7 @@ final class TracingHttpClientTest extends TracingTestCase
 
         $span = $this->span();
         self::assertSame(
-            ["00-{$span->getTraceId()}-{$span->getSpanId()}-01"],
+            [self::traceparentOf($span)],
             self::headerValues($seenHeaders, 'traceparent'),
         );
         self::assertSame(['bar'], self::headerValues($seenHeaders, 'X-Foo'));
@@ -90,7 +91,7 @@ final class TracingHttpClientTest extends TracingTestCase
 
         $span = $this->span();
         self::assertSame(
-            ["00-{$span->getTraceId()}-{$span->getSpanId()}-01"],
+            [self::traceparentOf($span)],
             self::headerValues($seenHeaders, 'traceparent'),
         );
         self::assertSame(['bar'], self::headerValues($seenHeaders, 'X-Foo'));
@@ -105,7 +106,7 @@ final class TracingHttpClientTest extends TracingTestCase
 
         $span = $this->span();
         self::assertSame(
-            ["00-{$span->getTraceId()}-{$span->getSpanId()}-01"],
+            [self::traceparentOf($span)],
             self::headerValues($seenHeaders, 'traceparent'),
         );
         // No stale tracestate survives, and no new one replaces it: a
@@ -155,7 +156,7 @@ final class TracingHttpClientTest extends TracingTestCase
         self::assertSame([
             'X-Foo: a',
             'X-Foo: b',
-            'traceparent' => "00-{$span->getTraceId()}-{$span->getSpanId()}-01",
+            'traceparent' => self::traceparentOf($span),
         ], $headers);
     }
 
@@ -191,7 +192,7 @@ final class TracingHttpClientTest extends TracingTestCase
         $span = $this->span();
         self::assertSame([
             'X-Foo: bar',
-            'traceparent' => "00-{$span->getTraceId()}-{$span->getSpanId()}-01",
+            'traceparent' => self::traceparentOf($span),
         ], $inner->lastOptions['headers']);
     }
 
@@ -228,7 +229,7 @@ final class TracingHttpClientTest extends TracingTestCase
         self::assertSame(['x-foo', 'traceparent'], $lowercaseKeys);
 
         $span = $this->span();
-        self::assertSame("00-{$span->getTraceId()}-{$span->getSpanId()}-01", $headers['traceparent']);
+        self::assertSame(self::traceparentOf($span), $headers['traceparent']);
         self::assertSame('bar', $headers['X-Foo']);
     }
 
@@ -271,6 +272,20 @@ final class TracingHttpClientTest extends TracingTestCase
             ->getContent();
 
         return $seenHeaders;
+    }
+
+    /**
+     * The W3C traceparent the propagator emits for $span, with the trace
+     * flags the span's own context carries rather than a fixed value.
+     */
+    private static function traceparentOf(ImmutableSpan $span): string
+    {
+        return sprintf(
+            '00-%s-%s-%02x',
+            $span->getTraceId(),
+            $span->getSpanId(),
+            $span->getContext()->getTraceFlags(),
+        );
     }
 
     /**
